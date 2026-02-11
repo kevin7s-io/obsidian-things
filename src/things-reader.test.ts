@@ -1,32 +1,100 @@
 import { describe, it, expect } from "vitest";
-import { decodeThingsDate, findThingsDbPath } from "./things-reader";
+import { ThingsNotRunningError, rawToTask } from "./things-reader";
+import { ThingsStatus, ThingsItemType, ThingsStart } from "./types";
 
-describe("decodeThingsDate", () => {
-    it("returns null for null/zero input", () => {
-        expect(decodeThingsDate(null)).toBeNull();
-        expect(decodeThingsDate(0)).toBeNull();
-    });
-
-    it("decodes a known date correctly", () => {
-        // Things encodes dates as: year << 16 | month << 12 | day << 7
-        const encoded = (2026 << 16) | (2 << 12) | (10 << 7);
-        expect(decodeThingsDate(encoded)).toBe("2026-02-10");
-    });
-
-    it("decodes another date correctly", () => {
-        const encoded = (2025 << 16) | (12 << 12) | (25 << 7);
-        expect(decodeThingsDate(encoded)).toBe("2025-12-25");
-    });
-
-    it("pads single-digit months and days", () => {
-        const encoded = (2026 << 16) | (1 << 12) | (5 << 7);
-        expect(decodeThingsDate(encoded)).toBe("2026-01-05");
+describe("ThingsNotRunningError", () => {
+    it("is an instance of Error", () => {
+        const err = new ThingsNotRunningError();
+        expect(err).toBeInstanceOf(Error);
+        expect(err.name).toBe("ThingsNotRunningError");
+        expect(err.message).toBe("Things 3 is not running");
     });
 });
 
-describe("findThingsDbPath", () => {
-    it("returns empty string when base dir does not exist", () => {
-        const result = findThingsDbPath("/nonexistent/path");
-        expect(result).toBe("");
+describe("rawToTask", () => {
+    it("maps JXA output to ThingsTask", () => {
+        const raw = {
+            uuid: "ABC-123",
+            title: "Buy groceries",
+            status: 0,
+            notes: "milk, eggs",
+            project: "PROJ-1",
+            projectTitle: "Shopping",
+            area: "AREA-1",
+            areaTitle: "Personal",
+            tags: ["urgent", "errand"],
+            startDate: "2026-02-15",
+            deadline: "2026-02-20",
+            stopDate: null,
+            creationDate: 1739000000,
+            modificationDate: 1739100000,
+            start: 1,
+        };
+
+        const task = rawToTask(raw);
+        expect(task.uuid).toBe("ABC-123");
+        expect(task.title).toBe("Buy groceries");
+        expect(task.status).toBe(ThingsStatus.Open);
+        expect(task.type).toBe(ThingsItemType.Todo);
+        expect(task.notes).toBe("milk, eggs");
+        expect(task.project).toBe("PROJ-1");
+        expect(task.projectTitle).toBe("Shopping");
+        expect(task.area).toBe("AREA-1");
+        expect(task.areaTitle).toBe("Personal");
+        expect(task.tags).toEqual(["urgent", "errand"]);
+        expect(task.startDate).toBe("2026-02-15");
+        expect(task.deadline).toBe("2026-02-20");
+        expect(task.stopDate).toBeNull();
+        expect(task.creationDate).toBe(1739000000);
+        expect(task.userModificationDate).toBe(1739100000);
+        expect(task.start).toBe(ThingsStart.Anytime);
+        expect(task.trashed).toBe(false);
+    });
+
+    it("maps completed status correctly", () => {
+        const raw = {
+            uuid: "DEF-456",
+            title: "Done task",
+            status: 3,
+            notes: "",
+            project: null,
+            projectTitle: null,
+            area: null,
+            areaTitle: null,
+            tags: [],
+            startDate: null,
+            deadline: null,
+            stopDate: 1739200000,
+            creationDate: 1739000000,
+            modificationDate: 1739200000,
+            start: 1,
+        };
+
+        const task = rawToTask(raw);
+        expect(task.status).toBe(ThingsStatus.Completed);
+        expect(task.stopDate).toBe(1739200000);
+    });
+
+    it("maps canceled status correctly", () => {
+        const raw = {
+            uuid: "GHI-789",
+            title: "Canceled task",
+            status: 2,
+            notes: "",
+            project: null,
+            projectTitle: null,
+            area: null,
+            areaTitle: null,
+            tags: [],
+            startDate: null,
+            deadline: null,
+            stopDate: null,
+            creationDate: 1739000000,
+            modificationDate: 1739000000,
+            start: 1,
+        };
+
+        const task = rawToTask(raw);
+        expect(task.status).toBe(ThingsStatus.Canceled);
     });
 });

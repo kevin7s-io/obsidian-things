@@ -18,19 +18,6 @@ export class ThingsSyncSettingTab extends PluginSettingTab {
         containerEl.createEl("h3", { text: "Connection" });
 
         new Setting(containerEl)
-            .setName("Things database path")
-            .setDesc("Leave empty for auto-detection")
-            .addText((text) =>
-                text
-                    .setPlaceholder("Auto-detect")
-                    .setValue(this.plugin.settings.dbPath)
-                    .onChange(async (value) => {
-                        this.plugin.settings.dbPath = value;
-                        await this.plugin.saveSettings();
-                    })
-            );
-
-        new Setting(containerEl)
             .setName("Sync interval (seconds)")
             .setDesc("How often to sync with Things. Range: 10-300")
             .addSlider((slider) =>

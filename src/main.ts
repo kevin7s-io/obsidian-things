@@ -1,6 +1,6 @@
 import { Notice, Platform, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import { ThingsSyncSettings, DEFAULT_SETTINGS, ThingsTask, ThingsStatus, SyncState, ScannedTask } from "./types";
-import { findThingsDbPath, readAllTasks } from "./things-reader";
+import { readAllTasks, ThingsNotRunningError } from "./things-reader";
 import { createTask, completeTask, reopenTask } from "./things-writer";
 import { parseLine, buildTaskLine, scanFileContent } from "./markdown-scanner";
 import { parseQuery, filterTasks } from "./query-parser";
@@ -15,7 +15,6 @@ export default class ThingsSyncPlugin extends Plugin {
     taskCache: ThingsTask[] = [];
     taskCacheMap: Map<string, ThingsTask> = new Map();
     syncState: SyncState = { lastSyncTimestamp: 0, tasks: {} };
-    dbPath = "";
     syncing = false;
 
     async onload() {
@@ -24,11 +23,6 @@ export default class ThingsSyncPlugin extends Plugin {
         if (!Platform.isMacOS || !Platform.isDesktopApp) {
             new Notice("Things Sync requires macOS desktop.");
             return;
-        }
-
-        this.dbPath = this.settings.dbPath || findThingsDbPath();
-        if (!this.dbPath) {
-            new Notice("Things Sync: Could not find Things database. Set the path in settings.");
         }
 
         // Load sync state (stored alongside settings in data.json)
@@ -89,7 +83,7 @@ export default class ThingsSyncPlugin extends Plugin {
         this.addCommand({
             id: "sync-now",
             name: "Sync with Things 3",
-            callback: () => this.runSync(),
+            callback: () => this.runSync(true),
         });
 
         // Register sync interval
@@ -101,7 +95,7 @@ export default class ThingsSyncPlugin extends Plugin {
         this.addSettingTab(new ThingsSyncSettingTab(this.app, this));
 
         // Initial sync
-        if (this.settings.syncOnStartup && this.dbPath) {
+        if (this.settings.syncOnStartup) {
             // Delay slightly to let vault finish loading
             setTimeout(() => this.runSync(), 2000);
         }
@@ -113,15 +107,15 @@ export default class ThingsSyncPlugin extends Plugin {
         this.log("Things Sync unloaded");
     }
 
-    async runSync() {
-        if (this.syncing || !this.dbPath) return;
+    async runSync(manual = false) {
+        if (this.syncing) return;
         this.syncing = true;
 
         try {
             this.log("Starting sync...");
 
-            // Step 1: Read from Things DB
-            this.taskCache = await readAllTasks(this.dbPath);
+            // Step 1: Read from Things via JXA
+            this.taskCache = await readAllTasks();
             this.log(`Read ${this.taskCache.length} tasks from Things`);
 
             // Step 2: Scan vault
@@ -174,8 +168,15 @@ export default class ThingsSyncPlugin extends Plugin {
 
             this.log("Sync complete");
         } catch (err) {
-            console.error("Things Sync error:", err);
-            new Notice(`Things Sync error: ${err}`);
+            if (err instanceof ThingsNotRunningError) {
+                this.log("Things 3 is not running, skipping sync");
+                if (manual) {
+                    new Notice("Things 3 is not running. Please open Things to sync.");
+                }
+            } else {
+                console.error("Things Sync error:", err);
+                new Notice(`Things Sync error: ${err}`);
+            }
         } finally {
             this.syncing = false;
         }

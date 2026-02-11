@@ -1,45 +1,4 @@
-import { spawn } from "child_process";
-
-interface AppleScriptResult {
-    stdout: string;
-    stderr: string;
-    code: number;
-}
-
-async function runAppleScript(script: string): Promise<AppleScriptResult> {
-    return new Promise((resolve) => {
-        const stdoutChunks: Buffer[] = [];
-        const stderrChunks: Buffer[] = [];
-
-        const child = spawn("osascript", ["-e", script], { detached: true });
-
-        child.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
-        child.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
-        child.on("error", (err: Error) => {
-            stderrChunks.push(Buffer.from(String(err.stack), "ascii"));
-        });
-        child.on("close", (code: number) => {
-            resolve({
-                stdout: Buffer.concat(stdoutChunks).toString("utf-8").trim(),
-                stderr: Buffer.concat(stderrChunks).toString("utf-8").trim(),
-                code: code ?? 1,
-            });
-        });
-    });
-}
-
-function escapeAppleScript(str: string): string {
-    return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-const UUID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
-
-function validateUuid(uuid: string): string {
-    if (!UUID_PATTERN.test(uuid)) {
-        throw new Error(`Invalid Things UUID: ${uuid}`);
-    }
-    return uuid;
-}
+import { runAppleScript, escapeAppleScript, validateUuid } from "./things-bridge";
 
 export function buildCreateScript(title: string, project?: string): string {
     const escapedTitle = escapeAppleScript(title);

@@ -60,7 +60,6 @@ export interface ScannedTask {
 }
 
 export interface ThingsSyncSettings {
-    dbPath: string;
     syncIntervalSeconds: number;
     syncOnStartup: boolean;
     syncTag: string;
@@ -79,7 +78,6 @@ export interface ThingsSyncSettings {
 }
 
 export const DEFAULT_SETTINGS: ThingsSyncSettings = {
-    dbPath: "",
     syncIntervalSeconds: 30,
     syncOnStartup: true,
     syncTag: "#things",

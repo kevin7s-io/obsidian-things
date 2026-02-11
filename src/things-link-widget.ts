@@ -6,7 +6,13 @@ import type { ThingsTask } from "./types";
 
 // --- Shared helpers ---
 
-const THINGS_LOGO_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16"><rect x="1" y="1" width="14" height="14" rx="3" fill="#4A89DC"/><path d="M8 4.5v7M4.5 8h7M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/></svg>';
+const THINGS_LOGO_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16"><rect x=".5" y=".5" width="15" height="15" rx="3.5" fill="#4A89DC"/><rect x="3" y="3" width="10" height="10" rx="1.5" fill="#fff"/><path d="M5.2 8.4l2 2.1 3.8-4.2" fill="none" stroke="#4A89DC" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+// Calendar icon for scheduled/start date (matches Things' orange calendar)
+const CALENDAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 14 14"><rect x="1.5" y="3" width="11" height="9.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><line x1="1.5" y1="6" x2="12.5" y2="6" stroke="currentColor" stroke-width="1.3"/><line x1="4.5" y1="3" x2="4.5" y2="1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><line x1="9.5" y1="3" x2="9.5" y2="1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
+
+// Flag icon for deadline (matches Things' flag)
+const FLAG_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 14 14"><path d="M3 13V1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M3 2h8l-2.5 2.75L11 7.5H3z" fill="currentColor" opacity="0.25" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>';
 
 function createThingsLogo(): HTMLElement {
     const span = document.createElement("span");
@@ -75,19 +81,27 @@ function createMetadataBadges(task: ThingsTask, settings: BadgeSettings, reading
         }
     }
 
-    // Start date
+    // Start date (calendar icon)
     if (settings.showStartDate && task.startDate) {
         const badge = document.createElement("span");
         badge.className = "things-badge things-badge-start";
-        badge.textContent = `\u{1F4C6} ${formatDate(task.startDate)}`;
+        const icon = document.createElement("span");
+        icon.className = "things-date-icon";
+        icon.innerHTML = CALENDAR_ICON_SVG;
+        badge.appendChild(icon);
+        badge.appendChild(document.createTextNode(` ${formatDate(task.startDate)}`));
         container.appendChild(badge);
     }
 
-    // Deadline (due date)
+    // Deadline (flag icon)
     if (settings.showDeadline && task.deadline) {
         const badge = document.createElement("span");
         badge.className = "things-badge things-badge-deadline";
-        badge.textContent = `\u{1F4C5} ${formatDate(task.deadline)}`;
+        const icon = document.createElement("span");
+        icon.className = "things-date-icon";
+        icon.innerHTML = FLAG_ICON_SVG;
+        badge.appendChild(icon);
+        badge.appendChild(document.createTextNode(` ${formatDate(task.deadline)}`));
         container.appendChild(badge);
     }
 
@@ -192,6 +206,16 @@ export const thingsLinkViewPlugin = ViewPlugin.fromClass(
                 const isCheckbox = /^- \[[ x]\] /.test(line.text);
 
                 // Decorations must be added in ascending position order.
+                // 0. Override Obsidian's %% comment styling on the task text.
+                //    When blank lines separate tasks, Obsidian's parser can treat
+                //    closing %% … opening %% as a multi-line comment, greying out text.
+                const contentEnd = uuidMatch.index;
+                builder.add(
+                    line.from,
+                    line.from + contentEnd,
+                    Decoration.mark({ class: "things-task-line" })
+                );
+
                 // 1. Things logo after checkbox (earliest position)
                 if (isCheckbox) {
                     builder.add(
