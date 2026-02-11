@@ -67,6 +67,8 @@ export interface ThingsSyncSettings {
     showProject: boolean;
     showDeadline: boolean;
     showArea: boolean;
+    showStartDate: boolean;
+    showTags: boolean;
     conflictResolution: "things" | "obsidian";
     syncCompleted: boolean;
     autoCreate: boolean;
@@ -84,6 +86,8 @@ export const DEFAULT_SETTINGS: ThingsSyncSettings = {
     showProject: true,
     showDeadline: true,
     showArea: false,
+    showStartDate: false,
+    showTags: true,
     conflictResolution: "things",
     syncCompleted: true,
     autoCreate: true,

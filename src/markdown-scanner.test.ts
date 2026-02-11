@@ -102,17 +102,37 @@ describe("buildTaskLine", () => {
         expect(line).toBe("- [x] Done task #things %%things:DEF-456%%");
     });
 
-    it("builds a line with project and deadline", () => {
+    it("builds a clean line without inline metadata", () => {
         const line = buildTaskLine({
             checked: false,
             title: "Fix bug",
             uuid: "GHI-789",
             tag: "#things",
-            projectTitle: "Work",
-            deadline: "2026-03-01",
         });
-        expect(line).toBe(
-            "- [ ] Fix bug #things (Work) 📅 2026-03-01 %%things:GHI-789%%"
+        expect(line).toBe("- [ ] Fix bug #things %%things:GHI-789%%");
+    });
+});
+
+describe("parseLine backward compat", () => {
+    const tag = "#things";
+
+    it("parses old format with project, deadline, and area", () => {
+        const result = parseLine(
+            "- [ ] Fix bug #things (Work) 📅 2026-03-01 [Personal] %%things:DEF-456%%",
+            tag
         );
+        expect(result).not.toBeNull();
+        expect(result!.title).toBe("Fix bug");
+        expect(result!.uuid).toBe("DEF-456");
+    });
+
+    it("parses new clean format", () => {
+        const result = parseLine(
+            "- [ ] Fix bug #things %%things:DEF-456%%",
+            tag
+        );
+        expect(result).not.toBeNull();
+        expect(result!.title).toBe("Fix bug");
+        expect(result!.uuid).toBe("DEF-456");
     });
 });

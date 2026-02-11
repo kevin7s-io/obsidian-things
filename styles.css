@@ -69,3 +69,41 @@
 .things-link-icon:hover {
     opacity: 1;
 }
+
+.things-inline-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.things-badge {
+    font-size: 0.75em;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--background-secondary);
+    color: var(--text-muted);
+}
+
+.things-badge-project {
+    background: var(--background-modifier-border);
+    color: var(--text-normal);
+    font-weight: 500;
+}
+
+.things-badge-area {
+    background: var(--background-secondary-alt);
+    color: var(--text-muted);
+}
+
+.things-badge-deadline {
+    color: var(--text-accent);
+}
+
+.things-badge-start {
+    color: var(--text-muted);
+}
+
+.things-badge-tag {
+    color: var(--text-faint);
+    font-style: italic;
+}

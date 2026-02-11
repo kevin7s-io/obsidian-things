@@ -105,6 +105,28 @@ export class ThingsSyncSettingTab extends PluginSettingTab {
                     })
             );
 
+        new Setting(containerEl)
+            .setName("Show start date in tasks")
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(this.plugin.settings.showStartDate)
+                    .onChange(async (value) => {
+                        this.plugin.settings.showStartDate = value;
+                        await this.plugin.saveSettings();
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName("Show tags in tasks")
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(this.plugin.settings.showTags)
+                    .onChange(async (value) => {
+                        this.plugin.settings.showTags = value;
+                        await this.plugin.saveSettings();
+                    })
+            );
+
         // Sync Behavior
         containerEl.createEl("h3", { text: "Sync Behavior" });
 

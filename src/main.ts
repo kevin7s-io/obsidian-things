@@ -1,4 +1,4 @@
-import { Notice, Platform, Plugin, TFile } from "obsidian";
+import { Notice, Platform, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import { ThingsSyncSettings, DEFAULT_SETTINGS, ThingsTask, ThingsStatus, SyncState, ScannedTask } from "./types";
 import { findThingsDbPath, readAllTasks } from "./things-reader";
 import { createTask, completeTask, reopenTask } from "./things-writer";
@@ -7,11 +7,13 @@ import { parseQuery, filterTasks } from "./query-parser";
 import { renderListView, renderKanbanView, TaskActionHandler } from "./renderer";
 import { reconcile, ReconcileAction } from "./sync-engine";
 import { ThingsSyncSettingTab } from "./settings";
-import { thingsPostProcessor, thingsLinkViewPlugin } from "./things-link-widget";
+import { thingsLinkViewPlugin, createThingsPostProcessor } from "./things-link-widget";
+import { taskCacheField, updateTaskCache, buildCacheState } from "./task-cache-state";
 
 export default class ThingsSyncPlugin extends Plugin {
     settings: ThingsSyncSettings = DEFAULT_SETTINGS;
     taskCache: ThingsTask[] = [];
+    taskCacheMap: Map<string, ThingsTask> = new Map();
     syncState: SyncState = { lastSyncTimestamp: 0, tasks: {} };
     dbPath = "";
     syncing = false;
@@ -66,9 +68,22 @@ export default class ThingsSyncPlugin extends Plugin {
             }
         });
 
-        // Hide UUID text and show clickable Things link icon
-        this.registerMarkdownPostProcessor(thingsPostProcessor);
-        this.registerEditorExtension(thingsLinkViewPlugin);
+        // Hide UUID text and show clickable Things link icon + metadata badges
+        this.registerMarkdownPostProcessor(
+            createThingsPostProcessor(
+                this.app,
+                () => this.taskCacheMap,
+                () => this.settings
+            )
+        );
+        this.registerEditorExtension([taskCacheField, thingsLinkViewPlugin]);
+
+        // Push cache to newly opened editors
+        this.registerEvent(
+            this.app.workspace.on("active-leaf-change", () => {
+                this.dispatchCacheToEditors();
+            })
+        );
 
         // Add command for manual sync
         this.addCommand({
@@ -155,6 +170,7 @@ export default class ThingsSyncPlugin extends Plugin {
                 }
             }
             await this.persistState();
+            this.dispatchCacheToEditors();
 
             this.log("Sync complete");
         } catch (err) {
@@ -229,8 +245,6 @@ export default class ThingsSyncPlugin extends Plugin {
                                     title: action.thingsTask!.title,
                                     uuid: action.uuid!,
                                     tag: this.settings.syncTag,
-                                    projectTitle: this.settings.showProject ? action.thingsTask!.projectTitle || undefined : undefined,
-                                    deadline: this.settings.showDeadline ? action.thingsTask!.deadline : null,
                                 });
                             }
                             return lines.join("\n");
@@ -254,8 +268,6 @@ export default class ThingsSyncPlugin extends Plugin {
                                     title: action.thingsTask!.title,
                                     uuid: action.uuid!,
                                     tag: this.settings.syncTag,
-                                    projectTitle: this.settings.showProject ? action.thingsTask!.projectTitle || undefined : undefined,
-                                    deadline: this.settings.showDeadline ? action.thingsTask!.deadline : null,
                                 });
                             }
                             return lines.join("\n");
@@ -265,6 +277,18 @@ export default class ThingsSyncPlugin extends Plugin {
                 break;
             }
         }
+    }
+
+    dispatchCacheToEditors() {
+        const cacheState = buildCacheState(this.taskCache, this.settings);
+        this.taskCacheMap = cacheState.tasks;
+        this.app.workspace.iterateAllLeaves((leaf: WorkspaceLeaf) => {
+            // @ts-expect-error -- MarkdownView exposes .editor?.cm
+            const cm = leaf.view?.editor?.cm as import("@codemirror/view").EditorView | undefined;
+            if (cm) {
+                cm.dispatch({ effects: updateTaskCache.of(cacheState) });
+            }
+        });
     }
 
     log(message: string) {
@@ -283,6 +307,7 @@ export default class ThingsSyncPlugin extends Plugin {
 
     async saveSettings() {
         await this.persistState();
+        this.dispatchCacheToEditors();
     }
 
     private async persistState() {

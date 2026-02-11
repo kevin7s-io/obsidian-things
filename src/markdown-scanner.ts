@@ -40,27 +40,11 @@ interface BuildTaskLineOpts {
     title: string;
     uuid: string;
     tag: string;
-    projectTitle?: string;
-    deadline?: string | null;
-    areaTitle?: string;
 }
 
 export function buildTaskLine(opts: BuildTaskLineOpts): string {
     const checkbox = opts.checked ? "[x]" : "[ ]";
-    let line = `- ${checkbox} ${opts.title} ${opts.tag}`;
-
-    if (opts.projectTitle) {
-        line += ` (${opts.projectTitle})`;
-    }
-    if (opts.deadline) {
-        line += ` \u{1F4C5} ${opts.deadline}`;
-    }
-    if (opts.areaTitle) {
-        line += ` [${opts.areaTitle}]`;
-    }
-
-    line += ` %%things:${opts.uuid}%%`;
-    return line;
+    return `- ${checkbox} ${opts.title} ${opts.tag} %%things:${opts.uuid}%%`;
 }
 
 export function extractTagFromLine(line: string, tag: string): boolean {
