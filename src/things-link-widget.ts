@@ -21,6 +21,16 @@ const CHECKBOX_DONE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" he
 // Project/folder icon for card footer
 const PROJECT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 14 14"><path d="M1.5 3.5v7a1 1 0 001 1h9a1 1 0 001-1v-5.5a1 1 0 00-1-1H7L5.5 2.5h-3a1 1 0 00-1 1z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>';
 
+// Pencil/edit icon for card edit button
+const EDIT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14"><path d="M2.5 11.5l-.5 2 2-.5 7.8-7.8-1.5-1.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M8.8 3.7l1.5 1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
+
+// Module-level edit handler — set by main.ts, used by ViewPlugin widgets
+let editTaskHandler: ((uuid: string, task: ThingsTask) => void) | null = null;
+
+export function setEditTaskHandler(handler: (uuid: string, task: ThingsTask) => void): void {
+    editTaskHandler = handler;
+}
+
 // Tag color palette — 8 muted colors for consistent tag coloring
 const TAG_PALETTE = [
     "#5B8DEF", "#E06C75", "#E5C07B", "#56B6C2",
@@ -92,7 +102,8 @@ function buildCardDOM(
     settings: CardSettings,
     readingView: boolean,
     checked?: boolean,
-    onCheckboxToggle?: () => void
+    onCheckboxToggle?: () => void,
+    onEdit?: () => void
 ): HTMLElement {
     const card = document.createElement("div");
     card.className = "things-card";
@@ -135,7 +146,19 @@ function buildCardDOM(
     }
     main.appendChild(content);
 
-    // Things logo as clickable link to open in Things
+    // Card actions: edit + open in Things
+    if (onEdit) {
+        const editBtn = document.createElement("span");
+        editBtn.className = "things-card-edit";
+        editBtn.setAttribute("aria-label", "Edit task");
+        editBtn.innerHTML = EDIT_ICON_SVG;
+        editBtn.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onEdit();
+        });
+        main.appendChild(editBtn);
+    }
     main.appendChild(createThingsLogoLink(uuid));
 
     card.appendChild(main);
@@ -397,7 +420,11 @@ class ThingsCardWidget extends WidgetType {
             }
         };
 
-        return buildCardDOM(this.task, this.uuid, this.cacheState, false, isChecked, onCheckboxToggle);
+        const onEdit = editTaskHandler && this.task
+            ? () => editTaskHandler!(this.uuid, this.task!)
+            : undefined;
+
+        return buildCardDOM(this.task, this.uuid, this.cacheState, false, isChecked, onCheckboxToggle, onEdit);
     }
 }
 
@@ -519,7 +546,8 @@ class ThingsLinkChild extends MarkdownRenderChild {
         private ctx: MarkdownPostProcessorContext,
         private app: App,
         private getTaskCache: () => Map<string, ThingsTask>,
-        private getSettings: () => CardSettings
+        private getSettings: () => CardSettings,
+        private onEditTask?: (uuid: string, task: ThingsTask) => void
     ) {
         super(containerEl);
     }
@@ -543,8 +571,11 @@ class ThingsLinkChild extends MarkdownRenderChild {
                 if (settings.displayMode === "card" && task) {
                     // Card mode: replace li content with card DOM
                     const isChecked = /- \[x\]/.test(line);
+                    const onEdit = this.onEditTask
+                        ? () => this.onEditTask!(uuid, task)
+                        : undefined;
                     li.empty();
-                    li.appendChild(buildCardDOM(task, uuid, settings, true, isChecked));
+                    li.appendChild(buildCardDOM(task, uuid, settings, true, isChecked, undefined, onEdit));
                     li.classList.add("things-card-li");
                 } else {
                     // Inline mode: existing logic
@@ -577,11 +608,12 @@ class ThingsLinkChild extends MarkdownRenderChild {
 export function createThingsPostProcessor(
     app: App,
     getTaskCache: () => Map<string, ThingsTask>,
-    getSettings: () => CardSettings
+    getSettings: () => CardSettings,
+    onEditTask?: (uuid: string, task: ThingsTask) => void
 ) {
     return (el: HTMLElement, ctx: MarkdownPostProcessorContext): void => {
         const listItems = el.querySelectorAll("li");
         if (listItems.length === 0) return;
-        ctx.addChild(new ThingsLinkChild(el, listItems, ctx, app, getTaskCache, getSettings));
+        ctx.addChild(new ThingsLinkChild(el, listItems, ctx, app, getTaskCache, getSettings, onEditTask));
     };
 }

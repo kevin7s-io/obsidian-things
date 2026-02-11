@@ -1,13 +1,14 @@
 import { Notice, Platform, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import { ThingsSyncSettings, DEFAULT_SETTINGS, ThingsTask, ThingsStatus, SyncState, ScannedTask } from "./types";
 import { readAllTasks, ThingsNotRunningError } from "./things-reader";
-import { createTask, completeTask, reopenTask } from "./things-writer";
+import { createTask, completeTask, reopenTask, updateTaskNotes, updateTaskStartDate, updateTaskDeadline } from "./things-writer";
 import { parseLine, buildTaskLine, scanFileContent } from "./markdown-scanner";
 import { parseQuery, filterTasks } from "./query-parser";
 import { renderListView, renderKanbanView, TaskActionHandler } from "./renderer";
 import { reconcile, ReconcileAction } from "./sync-engine";
 import { ThingsSyncSettingTab } from "./settings";
-import { thingsLinkViewPlugin, createThingsPostProcessor } from "./things-link-widget";
+import { thingsLinkViewPlugin, createThingsPostProcessor, setEditTaskHandler } from "./things-link-widget";
+import { TaskEditModal, TaskMetadataChanges } from "./task-edit-modal";
 import { taskCacheField, updateTaskCache, buildCacheState } from "./task-cache-state";
 
 export default class ThingsSyncPlugin extends Plugin {
@@ -62,12 +63,23 @@ export default class ThingsSyncPlugin extends Plugin {
             }
         });
 
+        // Edit handler — opens modal, pushes changes to Things
+        const openEditModal = (uuid: string, task: ThingsTask) => {
+            new TaskEditModal(this.app, task, (u, changes) =>
+                this.updateTaskMetadata(u, changes)
+            ).open();
+        };
+
+        // Register edit handler for ViewPlugin (live preview)
+        setEditTaskHandler(openEditModal);
+
         // Hide UUID text and show clickable Things link icon + metadata badges
         this.registerMarkdownPostProcessor(
             createThingsPostProcessor(
                 this.app,
                 () => this.taskCacheMap,
-                () => this.settings
+                () => this.settings,
+                openEditModal
             )
         );
         this.registerEditorExtension([taskCacheField, thingsLinkViewPlugin]);
@@ -278,6 +290,36 @@ export default class ThingsSyncPlugin extends Plugin {
                 break;
             }
         }
+    }
+
+    async updateTaskMetadata(uuid: string, changes: TaskMetadataChanges) {
+        this.log(`Updating metadata for task ${uuid}`);
+
+        // Push changes to Things via AppleScript
+        const cached = this.taskCache.find((t) => t.uuid === uuid);
+        const oldNotes = cached?.notes ?? "";
+        const oldStartDate = cached?.startDate ?? null;
+        const oldDeadline = cached?.deadline ?? null;
+
+        if (changes.notes !== oldNotes) {
+            await updateTaskNotes(uuid, changes.notes);
+        }
+        if (changes.startDate !== oldStartDate) {
+            await updateTaskStartDate(uuid, changes.startDate);
+        }
+        if (changes.deadline !== oldDeadline) {
+            await updateTaskDeadline(uuid, changes.deadline);
+        }
+
+        // Update local cache optimistically
+        if (cached) {
+            cached.notes = changes.notes;
+            cached.startDate = changes.startDate;
+            cached.deadline = changes.deadline;
+        }
+
+        this.dispatchCacheToEditors();
+        new Notice("Task updated in Things");
     }
 
     dispatchCacheToEditors() {
