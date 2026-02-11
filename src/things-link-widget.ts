@@ -71,11 +71,27 @@ interface CardSettings extends BadgeSettings {
     syncTag: string;
 }
 
+function createThingsLogoLink(uuid: string): HTMLElement {
+    const cleanUuid = uuid.replace(/^to do id /, "").replace(/%/g, "").trim();
+    const link = document.createElement("span");
+    link.className = "things-card-link";
+    link.setAttribute("aria-label", `Open in Things: ${cleanUuid}`);
+    link.setAttribute("data-tooltip-position", "top");
+    link.innerHTML = THINGS_LOGO_SVG;
+    link.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        window.open(`things:///show?id=${cleanUuid}`);
+    });
+    return link;
+}
+
 function buildCardDOM(
     task: ThingsTask,
     uuid: string,
     settings: CardSettings,
     readingView: boolean,
+    checked?: boolean,
     onCheckboxToggle?: () => void
 ): HTMLElement {
     const card = document.createElement("div");
@@ -85,10 +101,10 @@ function buildCardDOM(
     const main = document.createElement("div");
     main.className = "things-card-main";
 
-    // Checkbox
+    // Checkbox — reflect markdown [x]/[ ] state, fall back to task status
     const checkbox = document.createElement("div");
     checkbox.className = "things-card-checkbox";
-    const isCompleted = task.status === (3 as ThingsStatus);
+    const isCompleted = checked ?? task.status === (3 as ThingsStatus);
     checkbox.innerHTML = isCompleted ? CHECKBOX_DONE_SVG : CHECKBOX_OPEN_SVG;
     if (!readingView && onCheckboxToggle) {
         checkbox.addEventListener("mousedown", (e) => {
@@ -119,8 +135,8 @@ function buildCardDOM(
     }
     main.appendChild(content);
 
-    // Link icon
-    main.appendChild(createThingsIcon(uuid));
+    // Things logo as clickable link to open in Things
+    main.appendChild(createThingsLogoLink(uuid));
 
     card.appendChild(main);
 
@@ -194,7 +210,7 @@ function createThingsLogo(): HTMLElement {
 }
 
 function createThingsIcon(uuid: string): HTMLElement {
-    const cleanUuid = uuid.replace(/^to do id /, "");
+    const cleanUuid = uuid.replace(/^to do id /, "").replace(/%/g, "").trim();
     const icon = document.createElement("span");
     icon.className = "things-link-icon";
     icon.setAttribute("aria-label", `Open in Things: ${cleanUuid}`);
@@ -364,11 +380,12 @@ class ThingsCardWidget extends WidgetType {
         const isChecked = /- \[x\] /i.test(this.lineText);
 
         const onCheckboxToggle = () => {
-            // Find the line in the current doc that matches
+            // Find the line containing this UUID
             const doc = view.state.doc;
+            const uuidPattern = `%%things:${this.uuid}%%`;
             for (let i = 1; i <= doc.lines; i++) {
                 const line = doc.line(i);
-                if (line.text !== this.lineText) continue;
+                if (!line.text.includes(uuidPattern)) continue;
                 const checkPos = line.text.indexOf(isChecked ? "[x]" : "[ ]");
                 if (checkPos === -1) continue;
                 const from = line.from + checkPos + 1;
@@ -380,7 +397,7 @@ class ThingsCardWidget extends WidgetType {
             }
         };
 
-        return buildCardDOM(this.task, this.uuid, this.cacheState, false, onCheckboxToggle);
+        return buildCardDOM(this.task, this.uuid, this.cacheState, false, isChecked, onCheckboxToggle);
     }
 }
 
@@ -425,7 +442,6 @@ export const thingsLinkViewPlugin = ViewPlugin.fromClass(
                         line.to,
                         Decoration.replace({
                             widget: new ThingsCardWidget(uuid, task, cacheState, line.text),
-                            block: true,
                         })
                     );
                 }
@@ -526,8 +542,9 @@ class ThingsLinkChild extends MarkdownRenderChild {
 
                 if (settings.displayMode === "card" && task) {
                     // Card mode: replace li content with card DOM
+                    const isChecked = /- \[x\]/.test(line);
                     li.empty();
-                    li.appendChild(buildCardDOM(task, uuid, settings, true));
+                    li.appendChild(buildCardDOM(task, uuid, settings, true, isChecked));
                     li.classList.add("things-card-li");
                 } else {
                     // Inline mode: existing logic

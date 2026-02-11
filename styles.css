@@ -154,13 +154,23 @@ a.things-badge-tag:hover {
 
 /* --- Card view --- */
 
+/* Reset list-item indentation on the CM line containing a card */
+.cm-line:has(.things-card) {
+    text-indent: 0 !important;
+    padding-left: 0 !important;
+    margin-left: 0 !important;
+    list-style: none !important;
+}
+
 .things-card {
+    display: block;
     background: var(--background-secondary);
     border: 1px solid var(--background-modifier-border);
     border-radius: 10px;
-    padding: 10px 14px;
+    padding: 12px 14px;
     margin: 4px 0;
-    max-width: 500px;
+    max-width: 512px;
+    text-indent: 0;
     transition: border-color 0.15s;
 }
 .things-card:hover {
@@ -196,20 +206,34 @@ a.things-badge-tag:hover {
 .things-card-notes {
     font-size: 0.85em;
     color: var(--text-muted);
-    margin-top: 2px;
+    margin-top: 4px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* Things logo link in card */
+.things-card-link {
+    flex-shrink: 0;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+    display: inline-flex;
+    align-items: center;
+    margin-top: 2px;
+}
+.things-card-link:hover {
+    opacity: 1;
 }
 
 .things-card-footer {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
-    margin-top: 8px;
-    padding-top: 6px;
-    font-size: 0.8em;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 8px;
+    font-size: 0.85em;
 }
 
 .things-card-tag {
@@ -223,7 +247,7 @@ a.things-badge-tag:hover {
 .things-card-date {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
+    gap: 4px;
     color: var(--text-muted);
 }
 .things-card-date svg {
@@ -242,7 +266,7 @@ a.things-badge-tag:hover {
 .things-card-project {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
+    gap: 4px;
     color: var(--text-muted);
     margin-left: auto;
 }
@@ -253,7 +277,7 @@ a.things-badge-tag:hover {
 .things-card-area {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
+    gap: 4px;
     color: var(--text-faint);
 }
 
