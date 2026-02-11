@@ -64,9 +64,7 @@ export function filterTasks(tasks: ThingsTask[], query: ParsedQuery): ThingsTask
         switch (query.list) {
             case "today":
                 const today = getToday();
-                result = result.filter(
-                    (t) => t.startDate === today || t.start === ThingsStart.Anytime
-                );
+                result = result.filter((t) => t.startDate === today);
                 break;
             case "inbox":
                 result = result.filter((t) => t.start === ThingsStart.Inbox);

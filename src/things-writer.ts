@@ -32,6 +32,15 @@ function escapeAppleScript(str: string): string {
     return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+const UUID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
+
+function validateUuid(uuid: string): string {
+    if (!UUID_PATTERN.test(uuid)) {
+        throw new Error(`Invalid Things UUID: ${uuid}`);
+    }
+    return uuid;
+}
+
 export function buildCreateScript(title: string, project?: string): string {
     const escapedTitle = escapeAppleScript(title);
     let props = `name:"${escapedTitle}"`;
@@ -42,14 +51,17 @@ export function buildCreateScript(title: string, project?: string): string {
 }
 
 export function buildCompleteScript(uuid: string): string {
+    validateUuid(uuid);
     return `tell application "Things3" to set status of to do id "${uuid}" to completed`;
 }
 
 export function buildReopenScript(uuid: string): string {
+    validateUuid(uuid);
     return `tell application "Things3" to set status of to do id "${uuid}" to open`;
 }
 
 export function buildUpdateTitleScript(uuid: string, title: string): string {
+    validateUuid(uuid);
     const escaped = escapeAppleScript(title);
     return `tell application "Things3" to set name of to do id "${uuid}" to "${escaped}"`;
 }

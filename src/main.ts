@@ -1,5 +1,5 @@
 import { Notice, Platform, Plugin, TFile } from "obsidian";
-import { ThingsSyncSettings, DEFAULT_SETTINGS, ThingsTask, SyncState, ScannedTask } from "./types";
+import { ThingsSyncSettings, DEFAULT_SETTINGS, ThingsTask, ThingsStatus, SyncState, ScannedTask } from "./types";
 import { findThingsDbPath, readAllTasks } from "./things-reader";
 import { createTask, completeTask, reopenTask } from "./things-writer";
 import { parseLine, buildTaskLine, scanFileContent } from "./markdown-scanner";
@@ -28,10 +28,10 @@ export default class ThingsSyncPlugin extends Plugin {
             new Notice("Things Sync: Could not find Things database. Set the path in settings.");
         }
 
-        // Load sync state
-        const savedState = await this.loadData();
-        if (savedState?.syncState) {
-            this.syncState = savedState.syncState;
+        // Load sync state (stored alongside settings in data.json)
+        const savedData = await this.loadData();
+        if (savedData?.syncState) {
+            this.syncState = savedData.syncState;
         }
 
         // Register code block processor
@@ -50,7 +50,7 @@ export default class ThingsSyncPlugin extends Plugin {
                         // Update cache optimistically
                         const cached = this.taskCache.find((t) => t.uuid === uuid);
                         if (cached) {
-                            cached.status = completed ? 3 : 0;
+                            cached.status = completed ? ThingsStatus.Completed : ThingsStatus.Open;
                         }
                     } catch (err) {
                         new Notice(`Things Sync: Failed to update task — ${err}`);
@@ -149,10 +149,7 @@ export default class ThingsSyncPlugin extends Plugin {
                     };
                 }
             }
-            await this.saveData({
-                ...this.settings,
-                syncState: this.syncState,
-            });
+            await this.persistState();
 
             this.log("Sync complete");
         } catch (err) {
@@ -170,12 +167,12 @@ export default class ThingsSyncPlugin extends Plugin {
                 this.log(`Creating task in Things: ${action.title}`);
                 const result = await createTask(action.title!, this.settings.defaultProject);
                 // Write UUID back to Obsidian
+                const uuid = result.trim();
                 if (action.filePath !== undefined && action.line !== undefined && action.scannedTask) {
                     const file = this.app.vault.getAbstractFileByPath(action.filePath);
                     if (file instanceof TFile) {
                         await this.app.vault.process(file, (content: string) => {
                             const lines = content.split("\n");
-                            const uuid = result.trim();
                             if (lines[action.line!]) {
                                 lines[action.line!] = buildTaskLine({
                                     checked: action.scannedTask!.checked,
@@ -187,6 +184,15 @@ export default class ThingsSyncPlugin extends Plugin {
                             return lines.join("\n");
                         });
                     }
+                    // Track immediately so next sync recognizes this task
+                    this.syncState.tasks[uuid] = {
+                        uuid,
+                        filePath: action.filePath,
+                        line: action.line,
+                        checked: action.scannedTask!.checked,
+                        title: action.scannedTask!.title,
+                        lastSyncTimestamp: Date.now() / 1000,
+                    };
                 }
                 break;
             }
@@ -264,10 +270,17 @@ export default class ThingsSyncPlugin extends Plugin {
 
     async loadSettings() {
         const data = await this.loadData();
-        this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
+        if (data) {
+            const { syncState: _syncState, ...settingsData } = data;
+            this.settings = Object.assign({}, DEFAULT_SETTINGS, settingsData);
+        }
     }
 
     async saveSettings() {
+        await this.persistState();
+    }
+
+    private async persistState() {
         await this.saveData({
             ...this.settings,
             syncState: this.syncState,

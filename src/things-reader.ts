@@ -149,19 +149,3 @@ export async function readAllTasks(dbPath: string): Promise<ThingsTask[]> {
     });
 }
 
-export async function readTasksSince(
-    dbPath: string,
-    sinceTimestamp: number
-): Promise<ThingsTask[]> {
-    const query = `${TASKS_QUERY} HAVING T.userModificationDate > ${sinceTimestamp}`;
-    const result = await runSqlite(dbPath, query);
-    if (result.stderr) {
-        throw new Error(`SQLite error: ${result.stderr}`);
-    }
-    const rows = parseCSV<RawTaskRow>(result.stdout);
-    return rows.map((row) => {
-        const task = rowToTask(row);
-        task.tags = row.tag ? row.tag.split(",").map((t) => t.trim()) : [];
-        return task;
-    });
-}

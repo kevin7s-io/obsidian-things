@@ -27,3 +27,17 @@ describe("buildReopenScript", () => {
         expect(script).toContain('set status of to do id "ABC-123" to open');
     });
 });
+
+describe("UUID validation", () => {
+    it("rejects malicious UUID in buildCompleteScript", () => {
+        expect(() => buildCompleteScript('" & (do shell script "evil") & "')).toThrow("Invalid Things UUID");
+    });
+
+    it("rejects malicious UUID in buildReopenScript", () => {
+        expect(() => buildReopenScript('"; malicious')).toThrow("Invalid Things UUID");
+    });
+
+    it("accepts valid UUID format", () => {
+        expect(() => buildCompleteScript("A1B2C3D4-E5F6-7890-ABCD-EF1234567890")).not.toThrow();
+    });
+});

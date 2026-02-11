@@ -108,4 +108,17 @@ describe("reconcile", () => {
         expect(hasReopen).toBe(true);
         expect(hasComplete).toBe(false);
     });
+
+    it("obsidian wins on conflict when configured", () => {
+        const scanned = [makeScanned({ checked: true })];
+        const tracked: Record<string, TrackedTask> = {
+            "UUID-1": makeTracked({ checked: false }),
+        };
+        const things = [makeThingsTask({ status: ThingsStatus.Open, title: "Updated title" })];
+        const actions = reconcile(scanned, things, tracked, "obsidian");
+        const hasComplete = actions.some((a) => a.type === "complete-in-things");
+        const hasReopen = actions.some((a) => a.type === "reopen-in-obsidian");
+        expect(hasComplete).toBe(true);
+        expect(hasReopen).toBe(false);
+    });
 });

@@ -104,6 +104,19 @@ describe("filterTasks", () => {
         expect(result[0]!.title).toBe("Sooner");
     });
 
+    it("filters today tasks by startDate only", () => {
+        const today = new Date().toISOString().slice(0, 10);
+        const tasks = [
+            makeTask({ startDate: today, title: "Today task" }),
+            makeTask({ startDate: null, start: ThingsStart.Anytime, title: "Anytime task" }),
+            makeTask({ startDate: "2099-01-01", title: "Future task" }),
+        ];
+        const q = parseQuery("today");
+        const result = filterTasks(tasks, q);
+        expect(result).toHaveLength(1);
+        expect(result[0]!.title).toBe("Today task");
+    });
+
     it("filters inbox tasks", () => {
         const tasks = [
             makeTask({ start: ThingsStart.Inbox }),
