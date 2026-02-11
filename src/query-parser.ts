@@ -20,6 +20,7 @@ export function parseQuery(source: string): ParsedQuery {
     for (const line of lines) {
         const colonIdx = line.indexOf(":");
         if (colonIdx === -1) {
+            // Single-word filter like "today", "inbox", "upcoming", "someday", "logbook"
             query.list = line.toLowerCase();
             continue;
         }
@@ -58,6 +59,7 @@ function getToday(): string {
 export function filterTasks(tasks: ThingsTask[], query: ParsedQuery): ThingsTask[] {
     let result = [...tasks];
 
+    // List-based filters
     if (query.list) {
         switch (query.list) {
             case "today":
@@ -81,6 +83,7 @@ export function filterTasks(tasks: ThingsTask[], query: ParsedQuery): ThingsTask
         }
     }
 
+    // Property filters
     if (query.project) {
         result = result.filter((t) => t.projectTitle === query.project);
     }
@@ -102,11 +105,12 @@ export function filterTasks(tasks: ThingsTask[], query: ParsedQuery): ThingsTask
         }
     }
 
+    // Sort
     if (query.sort) {
         result.sort((a, b) => {
             switch (query.sort) {
                 case "deadline":
-                    return (a.deadline || "9999").localeCompare(b.deadline || "9999");
+                    return (a.deadline || "9999") .localeCompare(b.deadline || "9999");
                 case "title":
                     return a.title.localeCompare(b.title);
                 case "project":
@@ -119,6 +123,7 @@ export function filterTasks(tasks: ThingsTask[], query: ParsedQuery): ThingsTask
         });
     }
 
+    // Limit
     if (query.limit) {
         result = result.slice(0, query.limit);
     }
