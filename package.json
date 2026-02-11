@@ -12,6 +12,7 @@
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",
+		"@types/papaparse": "^5.5.2",
 		"esbuild": "^0.21.0",
 		"obsidian": "latest",
 		"tslib": "^2.8.1",
