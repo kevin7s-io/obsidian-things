@@ -1,0 +1,57 @@
+.things-task-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+}
+
+.things-task-title {
+    flex: 1;
+}
+
+.things-task-meta {
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+
+.things-task-deadline {
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+
+.things-empty {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.things-group-header {
+    margin-top: 12px;
+    margin-bottom: 4px;
+}
+
+.things-kanban-view {
+    display: flex;
+    gap: 16px;
+    overflow-x: auto;
+    padding: 8px 0;
+}
+
+.things-kanban-column {
+    min-width: 200px;
+    max-width: 300px;
+    background: var(--background-secondary);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.things-kanban-header {
+    margin: 0 0 8px 0;
+    font-size: 0.9em;
+    font-weight: 600;
+}
+
+.things-kanban-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
