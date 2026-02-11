@@ -75,7 +75,8 @@ export async function createTask(
     if (result.stderr) {
         throw new Error(`AppleScript error: ${result.stderr}`);
     }
-    return result.stdout;
+    // AppleScript returns "to do id XXXX" — strip the prefix
+    return result.stdout.replace(/^to do id /, "");
 }
 
 export async function completeTask(uuid: string): Promise<void> {

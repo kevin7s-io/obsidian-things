@@ -3,15 +3,18 @@ import { ViewPlugin, ViewUpdate, DecorationSet, Decoration, WidgetType, EditorVi
 import { RangeSetBuilder } from "@codemirror/state";
 
 function createThingsIcon(uuid: string): HTMLElement {
+    // Strip legacy "to do id " prefix if present
+    const cleanUuid = uuid.replace(/^to do id /, "");
     const icon = document.createElement("span");
     icon.className = "things-link-icon";
-    icon.setAttribute("aria-label", `Things: ${uuid}`);
+    icon.setAttribute("aria-label", `Things: ${cleanUuid}`);
     icon.setAttribute("data-tooltip-position", "top");
     icon.textContent = "🔗";
-    icon.addEventListener("click", (e) => {
+    // Use mousedown to fire before CodeMirror moves the cursor and removes the widget
+    icon.addEventListener("mousedown", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        window.open(`things:///show?id=${uuid}`);
+        window.open(`things:///show?id=${cleanUuid}`);
     });
     return icon;
 }

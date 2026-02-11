@@ -20,7 +20,7 @@ export function parseLine(line: string, tag: string): ParsedLine | null {
 
     // Extract UUID
     const uuidMatch = body.match(/%%things:([^%]+)%%/);
-    const uuid = uuidMatch ? uuidMatch[1]! : null;
+    const uuid = uuidMatch ? uuidMatch[1]!.replace(/^to do id /, "") : null;
 
     // Build title: remove UUID comment, tag, and post-tag metadata
     let title = body;
