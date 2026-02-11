@@ -7,19 +7,30 @@ interface ParsedLine {
 }
 
 export function parseLine(line: string, tag: string): ParsedLine | null {
-    // Escape special regex chars in the tag
+    const checkboxMatch = line.match(/^- \[([ x])\] (.+)$/);
+    if (!checkboxMatch) return null;
+
+    const checked = checkboxMatch[1] === "x";
+    let body = checkboxMatch[2]!;
+
+    // Tag must be present (as whole word, not substring like #thingsmore)
     const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const tagRegex = new RegExp(`${escapedTag}(?:\\s|$)`);
+    if (!tagRegex.test(body)) return null;
 
-    const regex = new RegExp(
-        `^- \\[([ x])\\] (.+?)\\s*${escapedTag}(?:\\s.*?)?(?:\\s*%%things:([^%]+)%%)?\\s*$`
-    );
+    // Extract UUID
+    const uuidMatch = body.match(/%%things:([^%]+)%%/);
+    const uuid = uuidMatch ? uuidMatch[1]! : null;
 
-    const match = line.match(regex);
-    if (!match) return null;
-
-    const checked = match[1] === "x";
-    const title = match[2]!.trim();
-    const uuid = match[3] || null;
+    // Build title: remove UUID comment, tag, and post-tag metadata
+    let title = body;
+    title = title.replace(/%%things:[^%]+%%/, "");  // remove UUID
+    title = title.replace(tagRegex, " ");             // remove tag
+    title = title.replace(/\s*\(.*?\)\s*/g, " ");    // remove (Project)
+    title = title.replace(/\s*📅\s*\S+/g, "");       // remove deadline
+    title = title.replace(/\s*\[.*?\]\s*/g, " ");    // remove [Area]
+    title = title.replace(/\s{2,}/g, " ");              // collapse whitespace
+    title = title.trim();
 
     return { checked, title, uuid };
 }

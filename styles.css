@@ -55,3 +55,17 @@
     flex-direction: column;
     gap: 4px;
 }
+
+.things-link-icon {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 4px;
+    cursor: pointer;
+    opacity: 0.5;
+    font-size: 0.85em;
+    transition: opacity 0.15s;
+}
+
+.things-link-icon:hover {
+    opacity: 1;
+}

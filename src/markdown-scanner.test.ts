@@ -48,6 +48,37 @@ describe("parseLine", () => {
         expect(result).not.toBeNull();
         expect(result!.title).toBe("My task");
     });
+
+    it("parses tag at beginning of body", () => {
+        const result = parseLine("- [ ] #things Buy groceries", tag);
+        expect(result).not.toBeNull();
+        expect(result!.checked).toBe(false);
+        expect(result!.title).toBe("Buy groceries");
+        expect(result!.uuid).toBeNull();
+    });
+
+    it("parses tag in middle of body", () => {
+        const result = parseLine("- [ ] Buy #things groceries", tag);
+        expect(result).not.toBeNull();
+        expect(result!.checked).toBe(false);
+        expect(result!.title).toBe("Buy groceries");
+        expect(result!.uuid).toBeNull();
+    });
+
+    it("rejects partial tag match", () => {
+        const result = parseLine("- [ ] Nothingshere #thingsmore", tag);
+        expect(result).toBeNull();
+    });
+
+    it("parses tag at beginning with UUID", () => {
+        const result = parseLine(
+            "- [ ] #things Buy groceries %%things:ABC-123%%",
+            tag
+        );
+        expect(result).not.toBeNull();
+        expect(result!.title).toBe("Buy groceries");
+        expect(result!.uuid).toBe("ABC-123");
+    });
 });
 
 describe("buildTaskLine", () => {

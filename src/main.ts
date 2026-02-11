@@ -7,6 +7,7 @@ import { parseQuery, filterTasks } from "./query-parser";
 import { renderListView, renderKanbanView, TaskActionHandler } from "./renderer";
 import { reconcile, ReconcileAction } from "./sync-engine";
 import { ThingsSyncSettingTab } from "./settings";
+import { thingsPostProcessor, thingsLinkViewPlugin } from "./things-link-widget";
 
 export default class ThingsSyncPlugin extends Plugin {
     settings: ThingsSyncSettings = DEFAULT_SETTINGS;
@@ -64,6 +65,10 @@ export default class ThingsSyncPlugin extends Plugin {
                 renderListView(el, tasks, query, handler, this.settings.showProject, this.settings.showDeadline);
             }
         });
+
+        // Hide UUID text and show clickable Things link icon
+        this.registerMarkdownPostProcessor(thingsPostProcessor);
+        this.registerEditorExtension(thingsLinkViewPlugin);
 
         // Add command for manual sync
         this.addCommand({
