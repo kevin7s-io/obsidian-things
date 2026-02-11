@@ -2,15 +2,25 @@ import { App, MarkdownPostProcessorContext, MarkdownRenderChild, editorLivePrevi
 import { ViewPlugin, ViewUpdate, DecorationSet, Decoration, WidgetType, EditorView } from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
 import { taskCacheField, TaskCacheState } from "./task-cache-state";
-import type { ThingsTask, ThingsSyncSettings } from "./types";
+import type { ThingsTask } from "./types";
 
 // --- Shared helpers ---
+
+const THINGS_LOGO_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16"><rect x="1" y="1" width="14" height="14" rx="3" fill="#4A89DC"/><path d="M8 4.5v7M4.5 8h7M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/></svg>';
+
+function createThingsLogo(): HTMLElement {
+    const span = document.createElement("span");
+    span.className = "things-logo";
+    span.setAttribute("aria-label", "Linked to Things");
+    span.innerHTML = THINGS_LOGO_SVG;
+    return span;
+}
 
 function createThingsIcon(uuid: string): HTMLElement {
     const cleanUuid = uuid.replace(/^to do id /, "");
     const icon = document.createElement("span");
     icon.className = "things-link-icon";
-    icon.setAttribute("aria-label", `Things: ${cleanUuid}`);
+    icon.setAttribute("aria-label", `Open in Things: ${cleanUuid}`);
     icon.setAttribute("data-tooltip-position", "top");
     icon.textContent = "\u{1F517}";
     icon.addEventListener("mousedown", (e) => {
@@ -40,32 +50,32 @@ interface BadgeSettings {
     showTags: boolean;
 }
 
-function createMetadataBadges(task: ThingsTask, settings: BadgeSettings): DocumentFragment {
+function createMetadataBadges(task: ThingsTask, settings: BadgeSettings, readingView: boolean): DocumentFragment {
     const frag = document.createDocumentFragment();
     const container = document.createElement("span");
     container.className = "things-inline-meta";
 
-    if (settings.showProject && task.projectTitle) {
-        const badge = document.createElement("span");
-        badge.className = "things-badge things-badge-project";
-        badge.textContent = task.projectTitle;
-        container.appendChild(badge);
+    // Tags first — rendered as Obsidian-style #tag elements
+    if (settings.showTags && task.tags.length > 0) {
+        for (const tag of task.tags) {
+            if (readingView) {
+                const a = document.createElement("a");
+                a.className = "tag things-badge things-badge-tag";
+                a.href = `#${tag}`;
+                a.target = "_blank";
+                a.rel = "noopener";
+                a.textContent = `#${tag}`;
+                container.appendChild(a);
+            } else {
+                const span = document.createElement("span");
+                span.className = "things-badge things-badge-tag";
+                span.textContent = `#${tag}`;
+                container.appendChild(span);
+            }
+        }
     }
 
-    if (settings.showArea && task.areaTitle) {
-        const badge = document.createElement("span");
-        badge.className = "things-badge things-badge-area";
-        badge.textContent = task.areaTitle;
-        container.appendChild(badge);
-    }
-
-    if (settings.showDeadline && task.deadline) {
-        const badge = document.createElement("span");
-        badge.className = "things-badge things-badge-deadline";
-        badge.textContent = `\u{1F4C5} ${formatDate(task.deadline)}`;
-        container.appendChild(badge);
-    }
-
+    // Start date
     if (settings.showStartDate && task.startDate) {
         const badge = document.createElement("span");
         badge.className = "things-badge things-badge-start";
@@ -73,13 +83,28 @@ function createMetadataBadges(task: ThingsTask, settings: BadgeSettings): Docume
         container.appendChild(badge);
     }
 
-    if (settings.showTags && task.tags.length > 0) {
-        for (const tag of task.tags) {
-            const badge = document.createElement("span");
-            badge.className = "things-badge things-badge-tag";
-            badge.textContent = tag;
-            container.appendChild(badge);
-        }
+    // Deadline (due date)
+    if (settings.showDeadline && task.deadline) {
+        const badge = document.createElement("span");
+        badge.className = "things-badge things-badge-deadline";
+        badge.textContent = `\u{1F4C5} ${formatDate(task.deadline)}`;
+        container.appendChild(badge);
+    }
+
+    // Project
+    if (settings.showProject && task.projectTitle) {
+        const badge = document.createElement("span");
+        badge.className = "things-badge things-badge-project";
+        badge.textContent = task.projectTitle;
+        container.appendChild(badge);
+    }
+
+    // Area
+    if (settings.showArea && task.areaTitle) {
+        const badge = document.createElement("span");
+        badge.className = "things-badge things-badge-area";
+        badge.textContent = task.areaTitle;
+        container.appendChild(badge);
     }
 
     if (container.childNodes.length > 0) {
@@ -88,7 +113,12 @@ function createMetadataBadges(task: ThingsTask, settings: BadgeSettings): Docume
     return frag;
 }
 
-// --- Live preview: ThingsMetadataWidget ---
+// --- Live preview widgets ---
+
+class ThingsLogoWidget extends WidgetType {
+    eq() { return true; }
+    toDOM() { return createThingsLogo(); }
+}
 
 class ThingsMetadataWidget extends WidgetType {
     constructor(
@@ -107,10 +137,12 @@ class ThingsMetadataWidget extends WidgetType {
 
     toDOM(): HTMLElement {
         const wrapper = document.createElement("span");
-        wrapper.appendChild(createThingsIcon(this.uuid));
+        // Metadata badges first (tags, dates, project, area)
         if (this.task) {
-            wrapper.appendChild(createMetadataBadges(this.task, this.cacheState));
+            wrapper.appendChild(createMetadataBadges(this.task, this.cacheState, false));
         }
+        // Link icon always last
+        wrapper.appendChild(createThingsIcon(this.uuid));
         return wrapper;
     }
 }
@@ -139,22 +171,58 @@ export const thingsLinkViewPlugin = ViewPlugin.fromClass(
             const cacheState = view.state.field(taskCacheField);
             const builder = new RangeSetBuilder<Decoration>();
             const cursorLine = view.state.doc.lineAt(view.state.selection.main.head).number;
-            const regex = /%%things:([^%]+)%%/g;
+            const uuidRegex = /%%things:([^%]+)%%/g;
+
+            // Build sync-tag regex for whole-word hiding
+            const syncTag = cacheState.syncTag;
+            const escapedTag = syncTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const tagRegex = new RegExp(`${escapedTag}(?=\\s|$)`);
+
             for (let i = 1; i <= view.state.doc.lines; i++) {
                 if (i === cursorLine) continue;
                 const line = view.state.doc.line(i);
-                let m;
-                while ((m = regex.exec(line.text)) !== null) {
-                    const uuid = m[1]!.replace(/^to do id /, "");
-                    const task = cacheState.tasks.get(uuid);
+
+                // Only process lines with a Things UUID
+                uuidRegex.lastIndex = 0;
+                const uuidMatch = uuidRegex.exec(line.text);
+                if (!uuidMatch) continue;
+
+                const uuid = uuidMatch[1]!.replace(/^to do id /, "");
+                const task = cacheState.tasks.get(uuid);
+                const isCheckbox = /^- \[[ x]\] /.test(line.text);
+
+                // Decorations must be added in ascending position order.
+                // 1. Things logo after checkbox (earliest position)
+                if (isCheckbox) {
                     builder.add(
-                        line.from + m.index,
-                        line.from + m.index + m[0].length,
-                        Decoration.replace({
-                            widget: new ThingsMetadataWidget(uuid, task, cacheState),
-                        })
+                        line.from + 6,
+                        line.from + 6,
+                        Decoration.widget({ widget: new ThingsLogoWidget(), side: -1 })
                     );
                 }
+
+                // 2. Hide the sync tag (middle of line)
+                const tagMatch = tagRegex.exec(line.text);
+                if (tagMatch) {
+                    const tagStart = tagMatch.index;
+                    let tagEnd = tagStart + syncTag.length;
+                    // Consume trailing whitespace
+                    while (tagEnd < line.text.length && line.text[tagEnd] === " ") tagEnd++;
+                    builder.add(
+                        line.from + tagStart,
+                        line.from + tagEnd,
+                        Decoration.replace({})
+                    );
+                }
+
+                // 3. Replace UUID comment with metadata widget — link icon last (end of line)
+                builder.add(
+                    line.from + uuidMatch.index,
+                    line.from + uuidMatch.index + uuidMatch[0].length,
+                    Decoration.replace({
+                        widget: new ThingsMetadataWidget(uuid, task, cacheState),
+                    })
+                );
             }
             return builder.finish();
         }
@@ -171,7 +239,7 @@ class ThingsLinkChild extends MarkdownRenderChild {
         private ctx: MarkdownPostProcessorContext,
         private app: App,
         private getTaskCache: () => Map<string, ThingsTask>,
-        private getSettings: () => BadgeSettings
+        private getSettings: () => BadgeSettings & { syncTag: string }
     ) {
         super(containerEl);
     }
@@ -189,12 +257,32 @@ class ThingsLinkChild extends MarkdownRenderChild {
             const uuidMatch = line.match(/%%things:([^%]+)%%/);
             if (uuidMatch && liIndex < this.listItems.length) {
                 const uuid = uuidMatch[1]!.replace(/^to do id /, "");
-                const li = this.listItems[liIndex]!;
-                li.appendChild(createThingsIcon(uuid));
+                const li = this.listItems[liIndex]! as HTMLElement;
+
+                // Hide the sync tag rendered by Obsidian
+                const tagEls = li.querySelectorAll("a.tag");
+                for (const tagEl of Array.from(tagEls)) {
+                    if (tagEl.textContent === settings.syncTag) {
+                        (tagEl as HTMLElement).style.display = "none";
+                    }
+                }
+
+                // Prepend Things logo after checkbox
+                const checkbox = li.querySelector(".task-list-item-checkbox");
+                if (checkbox) {
+                    checkbox.insertAdjacentElement("afterend", createThingsLogo());
+                } else {
+                    li.prepend(createThingsLogo());
+                }
+
+                // Append metadata badges (tags, dates, project, area)
                 const task = taskCache.get(uuid);
                 if (task) {
-                    li.appendChild(createMetadataBadges(task, settings));
+                    li.appendChild(createMetadataBadges(task, settings, true));
                 }
+
+                // Link icon always last
+                li.appendChild(createThingsIcon(uuid));
             }
             liIndex++;
         }
@@ -204,7 +292,7 @@ class ThingsLinkChild extends MarkdownRenderChild {
 export function createThingsPostProcessor(
     app: App,
     getTaskCache: () => Map<string, ThingsTask>,
-    getSettings: () => BadgeSettings
+    getSettings: () => BadgeSettings & { syncTag: string }
 ) {
     return (el: HTMLElement, ctx: MarkdownPostProcessorContext): void => {
         const listItems = el.querySelectorAll("li");

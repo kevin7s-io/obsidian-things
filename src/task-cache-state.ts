@@ -8,6 +8,7 @@ export interface TaskCacheState {
     showArea: boolean;
     showStartDate: boolean;
     showTags: boolean;
+    syncTag: string;
 }
 
 const EMPTY_CACHE: TaskCacheState = {
@@ -17,6 +18,7 @@ const EMPTY_CACHE: TaskCacheState = {
     showArea: false,
     showStartDate: false,
     showTags: true,
+    syncTag: "#things",
 };
 
 export const updateTaskCache = StateEffect.define<TaskCacheState>();
@@ -50,5 +52,6 @@ export function buildCacheState(
         showArea: settings.showArea,
         showStartDate: settings.showStartDate,
         showTags: settings.showTags,
+        syncTag: settings.syncTag,
     };
 }

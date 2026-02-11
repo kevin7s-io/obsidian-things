@@ -70,6 +70,18 @@
     opacity: 1;
 }
 
+.things-logo {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 4px;
+    vertical-align: middle;
+    opacity: 0.85;
+}
+
+.things-logo svg {
+    display: block;
+}
+
 .things-inline-meta {
     display: inline-flex;
     align-items: center;
@@ -104,6 +116,15 @@
 }
 
 .things-badge-tag {
-    color: var(--text-faint);
-    font-style: italic;
+    background: var(--tag-background);
+    color: var(--tag-color);
+    font-style: normal;
+    font-weight: 400;
+    text-decoration: none;
+}
+
+a.things-badge-tag:hover {
+    color: var(--tag-color-hover);
+    background: var(--tag-background-hover);
+    text-decoration: none;
 }
