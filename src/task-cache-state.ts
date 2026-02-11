@@ -8,6 +8,7 @@ export interface TaskCacheState {
     showArea: boolean;
     showStartDate: boolean;
     showTags: boolean;
+    displayMode: "inline" | "card";
     syncTag: string;
 }
 
@@ -18,6 +19,7 @@ const EMPTY_CACHE: TaskCacheState = {
     showArea: false,
     showStartDate: false,
     showTags: true,
+    displayMode: "inline",
     syncTag: "#things",
 };
 
@@ -52,6 +54,7 @@ export function buildCacheState(
         showArea: settings.showArea,
         showStartDate: settings.showStartDate,
         showTags: settings.showTags,
+        displayMode: settings.displayMode,
         syncTag: settings.syncTag,
     };
 }

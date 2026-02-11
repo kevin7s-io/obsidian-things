@@ -68,6 +68,7 @@ export interface ThingsSyncSettings {
     showArea: boolean;
     showStartDate: boolean;
     showTags: boolean;
+    displayMode: "inline" | "card";
     conflictResolution: "things" | "obsidian";
     syncCompleted: boolean;
     autoCreate: boolean;
@@ -86,6 +87,7 @@ export const DEFAULT_SETTINGS: ThingsSyncSettings = {
     showArea: false,
     showStartDate: false,
     showTags: true,
+    displayMode: "inline",
     conflictResolution: "things",
     syncCompleted: true,
     autoCreate: true,

@@ -60,6 +60,20 @@ export class ThingsSyncSettingTab extends PluginSettingTab {
             );
 
         new Setting(containerEl)
+            .setName("Display mode")
+            .setDesc("How linked Things tasks appear in notes")
+            .addDropdown((dropdown) =>
+                dropdown
+                    .addOption("inline", "Inline badges")
+                    .addOption("card", "Card (Things 3 style)")
+                    .setValue(this.plugin.settings.displayMode)
+                    .onChange(async (value: string) => {
+                        this.plugin.settings.displayMode = value as "inline" | "card";
+                        await this.plugin.saveSettings();
+                    })
+            );
+
+        new Setting(containerEl)
             .setName("Show project in tasks")
             .addToggle((toggle) =>
                 toggle

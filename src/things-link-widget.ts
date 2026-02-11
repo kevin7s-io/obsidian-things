@@ -2,7 +2,7 @@ import { App, MarkdownPostProcessorContext, MarkdownRenderChild, editorLivePrevi
 import { ViewPlugin, ViewUpdate, DecorationSet, Decoration, WidgetType, EditorView } from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
 import { taskCacheField, TaskCacheState } from "./task-cache-state";
-import type { ThingsTask } from "./types";
+import type { ThingsTask, ThingsStatus } from "./types";
 
 // --- Shared helpers ---
 
@@ -13,6 +13,177 @@ const CALENDAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="12" he
 
 // Flag icon for deadline (matches Things' flag)
 const FLAG_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 14 14"><path d="M3 13V1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M3 2h8l-2.5 2.75L11 7.5H3z" fill="currentColor" opacity="0.25" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>';
+
+// Circular checkbox SVGs for card view
+const CHECKBOX_OPEN_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"/></svg>';
+const CHECKBOX_DONE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="#4A89DC"/><path d="M7 11.5l3 3 5.5-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+// Project/folder icon for card footer
+const PROJECT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 14 14"><path d="M1.5 3.5v7a1 1 0 001 1h9a1 1 0 001-1v-5.5a1 1 0 00-1-1H7L5.5 2.5h-3a1 1 0 00-1 1z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>';
+
+// Tag color palette — 8 muted colors for consistent tag coloring
+const TAG_PALETTE = [
+    "#5B8DEF", "#E06C75", "#E5C07B", "#56B6C2",
+    "#C678DD", "#98C379", "#D19A66", "#61AFEF",
+];
+
+function tagColor(tag: string): string {
+    let hash = 0;
+    for (let i = 0; i < tag.length; i++) hash += tag.charCodeAt(i);
+    return TAG_PALETTE[hash % TAG_PALETTE.length]!;
+}
+
+function formatRelativeDate(iso: string): string {
+    const [year, month, day] = iso.split("-").map(Number);
+    const target = new Date(year!, month! - 1, day);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffDays = Math.round((target.getTime() - today.getTime()) / 86400000);
+
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Tomorrow";
+    if (diffDays === -1) return "Yesterday";
+    if (diffDays > 1 && diffDays <= 6) {
+        return target.toLocaleDateString("en-US", { weekday: "long" });
+    }
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthStr = months[month! - 1] ?? "???";
+    if (year === now.getFullYear()) return `${monthStr} ${day}`;
+    return `${monthStr} ${day}, ${year}`;
+}
+
+function formatDeadlineCountdown(iso: string): { text: string; overdue: boolean } {
+    const [year, month, day] = iso.split("-").map(Number);
+    const target = new Date(year!, month! - 1, day);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffDays = Math.round((target.getTime() - today.getTime()) / 86400000);
+
+    if (diffDays < 0) return { text: "Overdue", overdue: true };
+    if (diffDays === 0) return { text: "Today", overdue: false };
+    if (diffDays === 1) return { text: "Tomorrow", overdue: false };
+    if (diffDays <= 14) return { text: `${diffDays} days left`, overdue: false };
+    return { text: formatRelativeDate(iso), overdue: false };
+}
+
+interface CardSettings extends BadgeSettings {
+    displayMode: "inline" | "card";
+    syncTag: string;
+}
+
+function buildCardDOM(
+    task: ThingsTask,
+    uuid: string,
+    settings: CardSettings,
+    readingView: boolean,
+    onCheckboxToggle?: () => void
+): HTMLElement {
+    const card = document.createElement("div");
+    card.className = "things-card";
+
+    // Main row: checkbox + content + link icon
+    const main = document.createElement("div");
+    main.className = "things-card-main";
+
+    // Checkbox
+    const checkbox = document.createElement("div");
+    checkbox.className = "things-card-checkbox";
+    const isCompleted = task.status === (3 as ThingsStatus);
+    checkbox.innerHTML = isCompleted ? CHECKBOX_DONE_SVG : CHECKBOX_OPEN_SVG;
+    if (!readingView && onCheckboxToggle) {
+        checkbox.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onCheckboxToggle();
+        });
+    }
+    main.appendChild(checkbox);
+
+    // Content: title + notes
+    const content = document.createElement("div");
+    content.className = "things-card-content";
+
+    const title = document.createElement("div");
+    title.className = "things-card-title";
+    title.textContent = task.title;
+    content.appendChild(title);
+
+    if (task.notes) {
+        const firstLine = task.notes.split("\n")[0] ?? "";
+        if (firstLine.length > 0) {
+            const notes = document.createElement("div");
+            notes.className = "things-card-notes";
+            notes.textContent = firstLine.length > 80 ? firstLine.slice(0, 80) + "\u2026" : firstLine;
+            content.appendChild(notes);
+        }
+    }
+    main.appendChild(content);
+
+    // Link icon
+    main.appendChild(createThingsIcon(uuid));
+
+    card.appendChild(main);
+
+    // Footer: tags, dates, project, area
+    const footerItems: HTMLElement[] = [];
+
+    if (settings.showTags && task.tags.length > 0) {
+        for (const tag of task.tags) {
+            const pill = document.createElement("span");
+            pill.className = "things-card-tag";
+            pill.style.background = tagColor(tag);
+            pill.textContent = tag;
+            footerItems.push(pill);
+        }
+    }
+
+    if (settings.showStartDate && task.startDate) {
+        const span = document.createElement("span");
+        span.className = "things-card-date things-card-scheduled";
+        span.innerHTML = CALENDAR_ICON_SVG + " ";
+        span.appendChild(document.createTextNode(formatRelativeDate(task.startDate)));
+        footerItems.push(span);
+    }
+
+    if (settings.showDeadline && task.deadline) {
+        const countdown = formatDeadlineCountdown(task.deadline);
+        const span = document.createElement("span");
+        span.className = "things-card-date things-card-deadline";
+        if (countdown.overdue) span.classList.add("things-card-deadline-overdue");
+        span.innerHTML = FLAG_ICON_SVG + " ";
+        const dateText = formatRelativeDate(task.deadline);
+        if (countdown.text !== dateText) {
+            span.appendChild(document.createTextNode(`${dateText} \u00B7 ${countdown.text}`));
+        } else {
+            span.appendChild(document.createTextNode(countdown.text));
+        }
+        footerItems.push(span);
+    }
+
+    if (settings.showArea && task.areaTitle) {
+        const span = document.createElement("span");
+        span.className = "things-card-area";
+        span.textContent = task.areaTitle;
+        footerItems.push(span);
+    }
+
+    if (settings.showProject && task.projectTitle) {
+        const span = document.createElement("span");
+        span.className = "things-card-project";
+        span.innerHTML = PROJECT_ICON_SVG + " ";
+        span.appendChild(document.createTextNode(task.projectTitle));
+        footerItems.push(span);
+    }
+
+    if (footerItems.length > 0) {
+        const footer = document.createElement("div");
+        footer.className = "things-card-footer";
+        for (const item of footerItems) footer.appendChild(item);
+        card.appendChild(footer);
+    }
+
+    return card;
+}
 
 function createThingsLogo(): HTMLElement {
     const span = document.createElement("span");
@@ -161,6 +332,58 @@ class ThingsMetadataWidget extends WidgetType {
     }
 }
 
+class ThingsCardWidget extends WidgetType {
+    constructor(
+        readonly uuid: string,
+        readonly task: ThingsTask | undefined,
+        readonly cacheState: TaskCacheState,
+        readonly lineText: string
+    ) {
+        super();
+    }
+
+    eq(other: ThingsCardWidget): boolean {
+        return this.uuid === other.uuid &&
+            this.task === other.task &&
+            this.cacheState === other.cacheState &&
+            this.lineText === other.lineText;
+    }
+
+    get estimatedHeight(): number {
+        return 80;
+    }
+
+    toDOM(view: EditorView): HTMLElement {
+        if (!this.task) {
+            const placeholder = document.createElement("div");
+            placeholder.className = "things-card";
+            placeholder.textContent = "Loading\u2026";
+            return placeholder;
+        }
+
+        const isChecked = /- \[x\] /i.test(this.lineText);
+
+        const onCheckboxToggle = () => {
+            // Find the line in the current doc that matches
+            const doc = view.state.doc;
+            for (let i = 1; i <= doc.lines; i++) {
+                const line = doc.line(i);
+                if (line.text !== this.lineText) continue;
+                const checkPos = line.text.indexOf(isChecked ? "[x]" : "[ ]");
+                if (checkPos === -1) continue;
+                const from = line.from + checkPos + 1;
+                const to = from + 1;
+                view.dispatch({
+                    changes: { from, to, insert: isChecked ? " " : "x" },
+                });
+                break;
+            }
+        };
+
+        return buildCardDOM(this.task, this.uuid, this.cacheState, false, onCheckboxToggle);
+    }
+}
+
 // --- Live preview: ViewPlugin ---
 
 export const thingsLinkViewPlugin = ViewPlugin.fromClass(
@@ -187,66 +410,83 @@ export const thingsLinkViewPlugin = ViewPlugin.fromClass(
             const cursorLine = view.state.doc.lineAt(view.state.selection.main.head).number;
             const uuidRegex = /%%things:([^%]+)%%/g;
 
-            // Build sync-tag regex for whole-word hiding
-            const syncTag = cacheState.syncTag;
-            const escapedTag = syncTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const tagRegex = new RegExp(`${escapedTag}(?=\\s|$)`);
-
-            for (let i = 1; i <= view.state.doc.lines; i++) {
-                if (i === cursorLine) continue;
-                const line = view.state.doc.line(i);
-
-                // Only process lines with a Things UUID
-                uuidRegex.lastIndex = 0;
-                const uuidMatch = uuidRegex.exec(line.text);
-                if (!uuidMatch) continue;
-
-                const uuid = uuidMatch[1]!.replace(/^to do id /, "");
-                const task = cacheState.tasks.get(uuid);
-                const isCheckbox = /^- \[[ x]\] /.test(line.text);
-
-                // Decorations must be added in ascending position order.
-                // 0. Override Obsidian's %% comment styling on the task text.
-                //    When blank lines separate tasks, Obsidian's parser can treat
-                //    closing %% … opening %% as a multi-line comment, greying out text.
-                const contentEnd = uuidMatch.index;
-                builder.add(
-                    line.from,
-                    line.from + contentEnd,
-                    Decoration.mark({ class: "things-task-line" })
-                );
-
-                // 1. Things logo after checkbox (earliest position)
-                if (isCheckbox) {
+            if (cacheState.displayMode === "card") {
+                // Card mode: replace entire line with ThingsCardWidget
+                for (let i = 1; i <= view.state.doc.lines; i++) {
+                    if (i === cursorLine) continue;
+                    const line = view.state.doc.line(i);
+                    uuidRegex.lastIndex = 0;
+                    const uuidMatch = uuidRegex.exec(line.text);
+                    if (!uuidMatch) continue;
+                    const uuid = uuidMatch[1]!.replace(/^to do id /, "");
+                    const task = cacheState.tasks.get(uuid);
                     builder.add(
-                        line.from + 6,
-                        line.from + 6,
-                        Decoration.widget({ widget: new ThingsLogoWidget(), side: -1 })
+                        line.from,
+                        line.to,
+                        Decoration.replace({
+                            widget: new ThingsCardWidget(uuid, task, cacheState, line.text),
+                            block: true,
+                        })
                     );
                 }
+            } else {
+                // Inline mode: existing decoration logic
+                const syncTag = cacheState.syncTag;
+                const escapedTag = syncTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                const tagRegex = new RegExp(`${escapedTag}(?=\\s|$)`);
 
-                // 2. Hide the sync tag (middle of line)
-                const tagMatch = tagRegex.exec(line.text);
-                if (tagMatch) {
-                    const tagStart = tagMatch.index;
-                    let tagEnd = tagStart + syncTag.length;
-                    // Consume trailing whitespace
-                    while (tagEnd < line.text.length && line.text[tagEnd] === " ") tagEnd++;
+                for (let i = 1; i <= view.state.doc.lines; i++) {
+                    if (i === cursorLine) continue;
+                    const line = view.state.doc.line(i);
+
+                    uuidRegex.lastIndex = 0;
+                    const uuidMatch = uuidRegex.exec(line.text);
+                    if (!uuidMatch) continue;
+
+                    const uuid = uuidMatch[1]!.replace(/^to do id /, "");
+                    const task = cacheState.tasks.get(uuid);
+                    const isCheckbox = /^- \[[ x]\] /.test(line.text);
+
+                    // Decorations must be added in ascending position order.
+                    // 0. Override Obsidian's %% comment styling on the task text.
+                    const contentEnd = uuidMatch.index;
                     builder.add(
-                        line.from + tagStart,
-                        line.from + tagEnd,
-                        Decoration.replace({})
+                        line.from,
+                        line.from + contentEnd,
+                        Decoration.mark({ class: "things-task-line" })
+                    );
+
+                    // 1. Things logo after checkbox (earliest position)
+                    if (isCheckbox) {
+                        builder.add(
+                            line.from + 6,
+                            line.from + 6,
+                            Decoration.widget({ widget: new ThingsLogoWidget(), side: -1 })
+                        );
+                    }
+
+                    // 2. Hide the sync tag (middle of line)
+                    const tagMatch = tagRegex.exec(line.text);
+                    if (tagMatch) {
+                        const tagStart = tagMatch.index;
+                        let tagEnd = tagStart + syncTag.length;
+                        while (tagEnd < line.text.length && line.text[tagEnd] === " ") tagEnd++;
+                        builder.add(
+                            line.from + tagStart,
+                            line.from + tagEnd,
+                            Decoration.replace({})
+                        );
+                    }
+
+                    // 3. Replace UUID comment with metadata widget — link icon last
+                    builder.add(
+                        line.from + uuidMatch.index,
+                        line.from + uuidMatch.index + uuidMatch[0].length,
+                        Decoration.replace({
+                            widget: new ThingsMetadataWidget(uuid, task, cacheState),
+                        })
                     );
                 }
-
-                // 3. Replace UUID comment with metadata widget — link icon last (end of line)
-                builder.add(
-                    line.from + uuidMatch.index,
-                    line.from + uuidMatch.index + uuidMatch[0].length,
-                    Decoration.replace({
-                        widget: new ThingsMetadataWidget(uuid, task, cacheState),
-                    })
-                );
             }
             return builder.finish();
         }
@@ -263,7 +503,7 @@ class ThingsLinkChild extends MarkdownRenderChild {
         private ctx: MarkdownPostProcessorContext,
         private app: App,
         private getTaskCache: () => Map<string, ThingsTask>,
-        private getSettings: () => BadgeSettings & { syncTag: string }
+        private getSettings: () => CardSettings
     ) {
         super(containerEl);
     }
@@ -282,31 +522,35 @@ class ThingsLinkChild extends MarkdownRenderChild {
             if (uuidMatch && liIndex < this.listItems.length) {
                 const uuid = uuidMatch[1]!.replace(/^to do id /, "");
                 const li = this.listItems[liIndex]! as HTMLElement;
-
-                // Hide the sync tag rendered by Obsidian
-                const tagEls = li.querySelectorAll("a.tag");
-                for (const tagEl of Array.from(tagEls)) {
-                    if (tagEl.textContent === settings.syncTag) {
-                        (tagEl as HTMLElement).style.display = "none";
-                    }
-                }
-
-                // Prepend Things logo after checkbox
-                const checkbox = li.querySelector(".task-list-item-checkbox");
-                if (checkbox) {
-                    checkbox.insertAdjacentElement("afterend", createThingsLogo());
-                } else {
-                    li.prepend(createThingsLogo());
-                }
-
-                // Append metadata badges (tags, dates, project, area)
                 const task = taskCache.get(uuid);
-                if (task) {
-                    li.appendChild(createMetadataBadges(task, settings, true));
-                }
 
-                // Link icon always last
-                li.appendChild(createThingsIcon(uuid));
+                if (settings.displayMode === "card" && task) {
+                    // Card mode: replace li content with card DOM
+                    li.empty();
+                    li.appendChild(buildCardDOM(task, uuid, settings, true));
+                    li.classList.add("things-card-li");
+                } else {
+                    // Inline mode: existing logic
+                    const tagEls = li.querySelectorAll("a.tag");
+                    for (const tagEl of Array.from(tagEls)) {
+                        if (tagEl.textContent === settings.syncTag) {
+                            (tagEl as HTMLElement).style.display = "none";
+                        }
+                    }
+
+                    const checkbox = li.querySelector(".task-list-item-checkbox");
+                    if (checkbox) {
+                        checkbox.insertAdjacentElement("afterend", createThingsLogo());
+                    } else {
+                        li.prepend(createThingsLogo());
+                    }
+
+                    if (task) {
+                        li.appendChild(createMetadataBadges(task, settings, true));
+                    }
+
+                    li.appendChild(createThingsIcon(uuid));
+                }
             }
             liIndex++;
         }
@@ -316,7 +560,7 @@ class ThingsLinkChild extends MarkdownRenderChild {
 export function createThingsPostProcessor(
     app: App,
     getTaskCache: () => Map<string, ThingsTask>,
-    getSettings: () => BadgeSettings & { syncTag: string }
+    getSettings: () => CardSettings
 ) {
     return (el: HTMLElement, ctx: MarkdownPostProcessorContext): void => {
         const listItems = el.querySelectorAll("li");

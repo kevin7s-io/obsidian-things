@@ -151,3 +151,116 @@ a.things-badge-tag:hover {
 .things-task-line {
     color: var(--text-normal);
 }
+
+/* --- Card view --- */
+
+.things-card {
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin: 4px 0;
+    max-width: 500px;
+    transition: border-color 0.15s;
+}
+.things-card:hover {
+    border-color: var(--interactive-accent);
+}
+
+.things-card-main {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.things-card-checkbox {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    cursor: pointer;
+    margin-top: 1px;
+}
+.things-card-checkbox svg {
+    display: block;
+}
+
+.things-card-content {
+    flex: 1;
+    min-width: 0;
+}
+.things-card-title {
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--text-normal);
+}
+.things-card-notes {
+    font-size: 0.85em;
+    color: var(--text-muted);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.things-card-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    padding-top: 6px;
+    font-size: 0.8em;
+}
+
+.things-card-tag {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+    color: #fff;
+    font-size: 0.9em;
+}
+
+.things-card-date {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--text-muted);
+}
+.things-card-date svg {
+    display: block;
+}
+.things-card-scheduled {
+    color: var(--text-muted);
+}
+.things-card-deadline {
+    color: var(--text-accent);
+}
+.things-card-deadline-overdue {
+    color: var(--text-error);
+}
+
+.things-card-project {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--text-muted);
+    margin-left: auto;
+}
+.things-card-project svg {
+    display: block;
+}
+
+.things-card-area {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--text-faint);
+}
+
+.things-card-li {
+    list-style: none;
+    margin-left: -24px;
+}
+.things-card-li .task-list-item-checkbox {
+    display: none;
+}
