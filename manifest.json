@@ -1,0 +1,9 @@
+{
+	"id": "obsidian-things",
+	"name": "Things Sync",
+	"version": "0.1.0",
+	"minAppVersion": "1.0.0",
+	"description": "Bidirectional sync between Obsidian and Things 3",
+	"author": "Kevin",
+	"isDesktopOnly": true
+}
