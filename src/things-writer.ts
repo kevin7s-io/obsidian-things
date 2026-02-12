@@ -1,45 +1,5 @@
-import { spawn } from "child_process";
-
-interface AppleScriptResult {
-    stdout: string;
-    stderr: string;
-    code: number;
-}
-
-async function runAppleScript(script: string): Promise<AppleScriptResult> {
-    return new Promise((resolve) => {
-        const stdoutChunks: Buffer[] = [];
-        const stderrChunks: Buffer[] = [];
-
-        const child = spawn("osascript", ["-e", script], { detached: true });
-
-        child.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
-        child.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
-        child.on("error", (err: Error) => {
-            stderrChunks.push(Buffer.from(String(err.stack), "ascii"));
-        });
-        child.on("close", (code: number) => {
-            resolve({
-                stdout: Buffer.concat(stdoutChunks).toString("utf-8").trim(),
-                stderr: Buffer.concat(stderrChunks).toString("utf-8").trim(),
-                code: code ?? 1,
-            });
-        });
-    });
-}
-
-function escapeAppleScript(str: string): string {
-    return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-const UUID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
-
-function validateUuid(uuid: string): string {
-    if (!UUID_PATTERN.test(uuid)) {
-        throw new Error(`Invalid Things UUID: ${uuid}`);
-    }
-    return uuid;
-}
+import { exec } from "child_process";
+import { runAppleScript, escapeAppleScript, validateUuid } from "./things-bridge";
 
 export function buildCreateScript(title: string, project?: string): string {
     const escapedTitle = escapeAppleScript(title);
@@ -101,6 +61,80 @@ export async function updateTaskTitle(
     if (result.stderr) {
         throw new Error(`AppleScript error: ${result.stderr}`);
     }
+}
+
+export function buildUpdateNotesScript(uuid: string, notes: string): string {
+    validateUuid(uuid);
+    if (notes === "") {
+        return `tell application "Things3" to set notes of to do id "${uuid}" to ""`;
+    }
+    // AppleScript doesn't support \n escapes — join lines with linefeed constant
+    const lines = notes.split("\n");
+    const escapedLines = lines.map((l) => `"${escapeAppleScript(l)}"`);
+    const notesExpr = escapedLines.join(" & linefeed & ");
+    return `tell application "Things3" to set notes of to do id "${uuid}" to ${notesExpr}`;
+}
+
+export function buildUpdateUrl(
+    authToken: string,
+    uuid: string,
+    params: Record<string, string>
+): string {
+    validateUuid(uuid);
+    const query = new URLSearchParams({
+        "auth-token": authToken,
+        id: uuid,
+        ...params,
+    });
+    return `things:///update?${query.toString()}`;
+}
+
+export function buildUpdateTagsScript(uuid: string, tags: string[]): string {
+    validateUuid(uuid);
+    const tagStr = tags.map((t) => escapeAppleScript(t)).join(", ");
+    return `tell application "Things3" to set tag names of to do id "${uuid}" to "${tagStr}"`;
+}
+
+export async function updateTaskTags(uuid: string, tags: string[]): Promise<void> {
+    const result = await runAppleScript(buildUpdateTagsScript(uuid, tags));
+    if (result.stderr) {
+        throw new Error(`AppleScript error: ${result.stderr}`);
+    }
+}
+
+export async function updateTaskNotes(uuid: string, notes: string): Promise<void> {
+    const result = await runAppleScript(buildUpdateNotesScript(uuid, notes));
+    if (result.stderr) {
+        throw new Error(`AppleScript error: ${result.stderr}`);
+    }
+}
+
+export async function updateTaskDates(
+    authToken: string,
+    uuid: string,
+    startDate: string | null,
+    deadline: string | null
+): Promise<void> {
+    if (!authToken) {
+        throw new Error("Things auth token not configured. Set it in plugin settings.");
+    }
+    const params: Record<string, string> = {};
+    // "when" sets the scheduled date; empty string clears it
+    if (startDate !== undefined) params.when = startDate ?? "";
+    if (deadline !== undefined) params.deadline = deadline ?? "";
+    if (Object.keys(params).length === 0) return;
+
+    const url = buildUpdateUrl(authToken, uuid, params);
+    return new Promise((resolve, reject) => {
+        exec(`open -g "${url}"`, (err) => {
+            if (err) reject(new Error(`Failed to open Things URL: ${err.message}`));
+            else resolve();
+        });
+    });
+}
+
+export function launchThingsInBackground(): void {
+    exec("open -g -a Things3");
 }
 
 export async function getTaskUuid(title: string): Promise<string> {

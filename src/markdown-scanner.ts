@@ -19,12 +19,12 @@ export function parseLine(line: string, tag: string): ParsedLine | null {
     if (!tagRegex.test(body)) return null;
 
     // Extract UUID
-    const uuidMatch = body.match(/%%things:([^%]+)%%/);
-    const uuid = uuidMatch ? uuidMatch[1]!.replace(/^to do id /, "") : null;
+    const uuidMatch = body.match(/<!--\s*things:(.+?)\s*-->/);
+    const uuid = uuidMatch ? uuidMatch[1]!.trim().replace(/^to do id /, "") : null;
 
     // Build title: remove UUID comment, tag, and post-tag metadata
     let title = body;
-    title = title.replace(/%%things:[^%]+%%/, "");  // remove UUID
+    title = title.replace(/<!--\s*things:.+?\s*-->/, "");  // remove UUID
     title = title.replace(tagRegex, " ");             // remove tag
     title = title.replace(/\s*\(.*?\)\s*/g, " ");    // remove (Project)
     title = title.replace(/\s*📅\s*\S+/g, "");       // remove deadline
@@ -40,27 +40,11 @@ interface BuildTaskLineOpts {
     title: string;
     uuid: string;
     tag: string;
-    projectTitle?: string;
-    deadline?: string | null;
-    areaTitle?: string;
 }
 
 export function buildTaskLine(opts: BuildTaskLineOpts): string {
     const checkbox = opts.checked ? "[x]" : "[ ]";
-    let line = `- ${checkbox} ${opts.title} ${opts.tag}`;
-
-    if (opts.projectTitle) {
-        line += ` (${opts.projectTitle})`;
-    }
-    if (opts.deadline) {
-        line += ` \u{1F4C5} ${opts.deadline}`;
-    }
-    if (opts.areaTitle) {
-        line += ` [${opts.areaTitle}]`;
-    }
-
-    line += ` %%things:${opts.uuid}%%`;
-    return line;
+    return `- ${checkbox} ${opts.title} ${opts.tag} <!-- things:${opts.uuid} -->`;
 }
 
 export function extractTagFromLine(line: string, tag: string): boolean {

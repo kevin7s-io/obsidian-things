@@ -1,5 +1,14 @@
-import { ThingsTask, ThingsStatus } from "./types";
+import { ThingsTask, ThingsStatus, ThingsSyncSettings } from "./types";
 import { ParsedQuery } from "./query-parser";
+import { createThingsLogoLink, createMetadataBadges, BadgeSettings } from "./things-link-widget";
+
+/** Strip any leaked <!-- things:UUID --> or sync tags from display titles */
+function cleanTitle(title: string): string {
+    return title
+        .replace(/<!--\s*things:.+?\s*-->/g, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+}
 
 export interface TaskActionHandler {
     onToggle(uuid: string, completed: boolean): void;
@@ -44,8 +53,7 @@ function renderTaskItem(
     container: HTMLElement,
     task: ThingsTask,
     handler: TaskActionHandler,
-    showProject: boolean,
-    showDeadline: boolean
+    settings: BadgeSettings
 ): void {
     const taskEl = container.createDiv({ cls: "things-task-item" });
 
@@ -57,21 +65,11 @@ function renderTaskItem(
         handler.onToggle(task.uuid, checkbox.checked);
     });
 
-    taskEl.createSpan({ text: task.title, cls: "things-task-title" });
+    taskEl.appendChild(createThingsLogoLink(task.uuid));
 
-    if (showProject && task.projectTitle) {
-        taskEl.createSpan({
-            text: ` (${task.projectTitle})`,
-            cls: "things-task-meta",
-        });
-    }
+    taskEl.createSpan({ text: cleanTitle(task.title), cls: "things-task-title" });
 
-    if (showDeadline && task.deadline) {
-        taskEl.createSpan({
-            text: ` 📅 ${task.deadline}`,
-            cls: "things-task-deadline",
-        });
-    }
+    taskEl.appendChild(createMetadataBadges(task, settings, true));
 }
 
 export function renderListView(
@@ -79,8 +77,7 @@ export function renderListView(
     tasks: ThingsTask[],
     query: ParsedQuery,
     handler: TaskActionHandler,
-    showProject: boolean,
-    showDeadline: boolean
+    settings: ThingsSyncSettings
 ): void {
     const container = el.createDiv({ cls: "things-list-view" });
 
@@ -94,12 +91,12 @@ export function renderListView(
         for (const [groupName, groupTasks] of Object.entries(groups)) {
             container.createEl("h4", { text: groupName, cls: "things-group-header" });
             for (const task of groupTasks) {
-                renderTaskItem(container, task, handler, showProject, showDeadline);
+                renderTaskItem(container, task, handler, settings);
             }
         }
     } else {
         for (const task of tasks) {
-            renderTaskItem(container, task, handler, showProject, showDeadline);
+            renderTaskItem(container, task, handler, settings);
         }
     }
 }
@@ -109,8 +106,7 @@ export function renderKanbanView(
     tasks: ThingsTask[],
     query: ParsedQuery,
     handler: TaskActionHandler,
-    showProject: boolean,
-    showDeadline: boolean
+    settings: ThingsSyncSettings
 ): void {
     const container = el.createDiv({ cls: "things-kanban-view" });
 
@@ -127,7 +123,7 @@ export function renderKanbanView(
         column.createEl("h4", { text: groupName, cls: "things-kanban-header" });
         const cardContainer = column.createDiv({ cls: "things-kanban-cards" });
         for (const task of groupTasks) {
-            renderTaskItem(cardContainer, task, handler, showProject, showDeadline);
+            renderTaskItem(cardContainer, task, handler, settings);
         }
     }
 }

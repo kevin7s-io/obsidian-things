@@ -19,6 +19,7 @@ const makeThingsTask = (overrides: Partial<ThingsTask> = {}): ThingsTask => ({
     creationDate: 0,
     userModificationDate: 100,
     start: ThingsStart.Anytime,
+    inTodayList: false,
     trashed: false,
     ...overrides,
 });
@@ -29,7 +30,7 @@ const makeScanned = (overrides: Partial<ScannedTask> = {}): ScannedTask => ({
     checked: false,
     title: "Test task",
     uuid: "UUID-1",
-    rawLine: "- [ ] Test task #things %%things:UUID-1%%",
+    rawLine: "- [ ] Test task #things <!-- things:UUID-1 -->",
     ...overrides,
 });
 

@@ -15,6 +15,7 @@ export interface ThingsTask {
     creationDate: number;
     userModificationDate: number;
     start: ThingsStart;
+    inTodayList: boolean;
     trashed: boolean;
 }
 
@@ -60,35 +61,43 @@ export interface ScannedTask {
 }
 
 export interface ThingsSyncSettings {
-    dbPath: string;
     syncIntervalSeconds: number;
     syncOnStartup: boolean;
+    launchThingsOnStartup: boolean;
     syncTag: string;
     showProject: boolean;
     showDeadline: boolean;
     showArea: boolean;
+    showStartDate: boolean;
+    showTags: boolean;
+    displayMode: "inline" | "card";
     conflictResolution: "things" | "obsidian";
     syncCompleted: boolean;
     autoCreate: boolean;
     defaultProject: string;
     defaultTags: string;
+    thingsAuthToken: string;
     debugLogging: boolean;
     dryRun: boolean;
 }
 
 export const DEFAULT_SETTINGS: ThingsSyncSettings = {
-    dbPath: "",
     syncIntervalSeconds: 30,
     syncOnStartup: true,
+    launchThingsOnStartup: true,
     syncTag: "#things",
     showProject: true,
     showDeadline: true,
     showArea: false,
+    showStartDate: false,
+    showTags: true,
+    displayMode: "inline",
     conflictResolution: "things",
     syncCompleted: true,
     autoCreate: true,
     defaultProject: "Inbox",
     defaultTags: "",
+    thingsAuthToken: "",
     debugLogging: false,
     dryRun: false,
 };

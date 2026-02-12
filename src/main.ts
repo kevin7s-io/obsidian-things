@@ -1,20 +1,23 @@
-import { Notice, Platform, Plugin, TFile } from "obsidian";
+import { Notice, Platform, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import { ThingsSyncSettings, DEFAULT_SETTINGS, ThingsTask, ThingsStatus, SyncState, ScannedTask } from "./types";
-import { findThingsDbPath, readAllTasks } from "./things-reader";
-import { createTask, completeTask, reopenTask } from "./things-writer";
+import { readAllTasks, ThingsNotRunningError } from "./things-reader";
+import { createTask, completeTask, reopenTask, updateTaskTitle, updateTaskNotes, updateTaskTags, updateTaskDates, launchThingsInBackground } from "./things-writer";
 import { parseLine, buildTaskLine, scanFileContent } from "./markdown-scanner";
 import { parseQuery, filterTasks } from "./query-parser";
 import { renderListView, renderKanbanView, TaskActionHandler } from "./renderer";
 import { reconcile, ReconcileAction } from "./sync-engine";
 import { ThingsSyncSettingTab } from "./settings";
-import { thingsPostProcessor, thingsLinkViewPlugin } from "./things-link-widget";
+import { thingsLinkViewPlugin, createThingsPostProcessor, setEditTaskHandler } from "./things-link-widget";
+import { TaskEditModal, TaskMetadataChanges } from "./task-edit-modal";
+import { taskCacheField, updateTaskCache, buildCacheState } from "./task-cache-state";
 
 export default class ThingsSyncPlugin extends Plugin {
     settings: ThingsSyncSettings = DEFAULT_SETTINGS;
     taskCache: ThingsTask[] = [];
+    taskCacheMap: Map<string, ThingsTask> = new Map();
     syncState: SyncState = { lastSyncTimestamp: 0, tasks: {} };
-    dbPath = "";
     syncing = false;
+    private codeBlocks: Array<{ el: HTMLElement; source: string }> = [];
 
     async onload() {
         await this.loadSettings();
@@ -24,57 +27,55 @@ export default class ThingsSyncPlugin extends Plugin {
             return;
         }
 
-        this.dbPath = this.settings.dbPath || findThingsDbPath();
-        if (!this.dbPath) {
-            new Notice("Things Sync: Could not find Things database. Set the path in settings.");
-        }
-
-        // Load sync state (stored alongside settings in data.json)
+        // Load persisted state (sync state + cached tasks from last session)
         const savedData = await this.loadData();
         if (savedData?.syncState) {
             this.syncState = savedData.syncState;
         }
+        if (savedData?.cachedTasks?.length) {
+            this.taskCache = savedData.cachedTasks;
+            this.log(`Loaded ${this.taskCache.length} cached tasks from last session`);
+        }
 
         // Register code block processor
         this.registerMarkdownCodeBlockProcessor("things", (source, el) => {
-            const query = parseQuery(source);
-            const tasks = filterTasks(this.taskCache, query);
-
-            const handler: TaskActionHandler = {
-                onToggle: async (uuid: string, completed: boolean) => {
-                    try {
-                        if (completed) {
-                            await completeTask(uuid);
-                        } else {
-                            await reopenTask(uuid);
-                        }
-                        // Update cache optimistically
-                        const cached = this.taskCache.find((t) => t.uuid === uuid);
-                        if (cached) {
-                            cached.status = completed ? ThingsStatus.Completed : ThingsStatus.Open;
-                        }
-                    } catch (err) {
-                        new Notice(`Things Sync: Failed to update task — ${err}`);
-                    }
-                },
-            };
-
-            if (query.view === "kanban") {
-                renderKanbanView(el, tasks, query, handler, this.settings.showProject, this.settings.showDeadline);
-            } else {
-                renderListView(el, tasks, query, handler, this.settings.showProject, this.settings.showDeadline);
-            }
+            this.codeBlocks.push({ el, source });
+            this.renderCodeBlock(source, el);
         });
 
-        // Hide UUID text and show clickable Things link icon
-        this.registerMarkdownPostProcessor(thingsPostProcessor);
-        this.registerEditorExtension(thingsLinkViewPlugin);
+        // Edit handler — opens modal, pushes changes to Things
+        const openEditModal = (uuid: string, task: ThingsTask) => {
+            new TaskEditModal(this.app, task, (u, changes) =>
+                this.updateTaskMetadata(u, changes)
+            ).open();
+        };
+
+        // Register edit handler for ViewPlugin (live preview)
+        setEditTaskHandler(openEditModal);
+
+        // Hide UUID text and show clickable Things link icon + metadata badges
+        this.registerMarkdownPostProcessor(
+            createThingsPostProcessor(
+                this.app,
+                () => this.taskCacheMap,
+                () => this.settings,
+                openEditModal
+            )
+        );
+        this.registerEditorExtension([taskCacheField, thingsLinkViewPlugin]);
+
+        // Push cache to newly opened editors
+        this.registerEvent(
+            this.app.workspace.on("active-leaf-change", () => {
+                this.dispatchCacheToEditors();
+            })
+        );
 
         // Add command for manual sync
         this.addCommand({
             id: "sync-now",
             name: "Sync with Things 3",
-            callback: () => this.runSync(),
+            callback: () => this.runSync(true),
         });
 
         // Register sync interval
@@ -85,9 +86,19 @@ export default class ThingsSyncPlugin extends Plugin {
         // Settings tab
         this.addSettingTab(new ThingsSyncSettingTab(this.app, this));
 
+        // Dispatch persisted cache immediately so content renders before first sync
+        if (this.taskCache.length > 0) {
+            this.dispatchCacheToEditors();
+        }
+
+        // Launch Things in background if configured
+        if (this.settings.launchThingsOnStartup) {
+            launchThingsInBackground();
+        }
+
         // Initial sync
-        if (this.settings.syncOnStartup && this.dbPath) {
-            // Delay slightly to let vault finish loading
+        if (this.settings.syncOnStartup) {
+            // Delay slightly to let vault finish loading (and Things to launch)
             setTimeout(() => this.runSync(), 2000);
         }
 
@@ -98,15 +109,15 @@ export default class ThingsSyncPlugin extends Plugin {
         this.log("Things Sync unloaded");
     }
 
-    async runSync() {
-        if (this.syncing || !this.dbPath) return;
+    async runSync(manual = false) {
+        if (this.syncing) return;
         this.syncing = true;
 
         try {
             this.log("Starting sync...");
 
-            // Step 1: Read from Things DB
-            this.taskCache = await readAllTasks(this.dbPath);
+            // Step 1: Read from Things via JXA
+            this.taskCache = await readAllTasks();
             this.log(`Read ${this.taskCache.length} tasks from Things`);
 
             // Step 2: Scan vault
@@ -155,11 +166,19 @@ export default class ThingsSyncPlugin extends Plugin {
                 }
             }
             await this.persistState();
+            this.dispatchCacheToEditors();
 
             this.log("Sync complete");
         } catch (err) {
-            console.error("Things Sync error:", err);
-            new Notice(`Things Sync error: ${err}`);
+            if (err instanceof ThingsNotRunningError) {
+                this.log("Things 3 is not running, skipping sync");
+                if (manual) {
+                    new Notice("Things 3 is not running. Please open Things to sync.");
+                }
+            } else {
+                console.error("Things Sync error:", err);
+                new Notice(`Things Sync error: ${err}`);
+            }
         } finally {
             this.syncing = false;
         }
@@ -229,8 +248,6 @@ export default class ThingsSyncPlugin extends Plugin {
                                     title: action.thingsTask!.title,
                                     uuid: action.uuid!,
                                     tag: this.settings.syncTag,
-                                    projectTitle: this.settings.showProject ? action.thingsTask!.projectTitle || undefined : undefined,
-                                    deadline: this.settings.showDeadline ? action.thingsTask!.deadline : null,
                                 });
                             }
                             return lines.join("\n");
@@ -254,8 +271,6 @@ export default class ThingsSyncPlugin extends Plugin {
                                     title: action.thingsTask!.title,
                                     uuid: action.uuid!,
                                     tag: this.settings.syncTag,
-                                    projectTitle: this.settings.showProject ? action.thingsTask!.projectTitle || undefined : undefined,
-                                    deadline: this.settings.showDeadline ? action.thingsTask!.deadline : null,
                                 });
                             }
                             return lines.join("\n");
@@ -267,6 +282,113 @@ export default class ThingsSyncPlugin extends Plugin {
         }
     }
 
+    async updateTaskMetadata(uuid: string, changes: TaskMetadataChanges) {
+        this.log(`Updating metadata for task ${uuid}`);
+
+        const cached = this.taskCache.find((t) => t.uuid === uuid);
+        const oldTitle = cached?.title ?? "";
+        const oldNotes = cached?.notes ?? "";
+        const oldStartDate = cached?.startDate ?? null;
+        const oldDeadline = cached?.deadline ?? null;
+
+        // Push title via AppleScript (silent, no auth needed)
+        if (changes.title !== oldTitle) {
+            await updateTaskTitle(uuid, changes.title);
+        }
+
+        // Push notes via AppleScript (silent, no auth needed)
+        if (changes.notes !== oldNotes) {
+            await updateTaskNotes(uuid, changes.notes);
+        }
+
+        // Push tags via AppleScript (silent, no auth needed)
+        const oldTags = cached?.tags ?? [];
+        const tagsChanged = changes.tags.join(",") !== oldTags.join(",");
+        if (tagsChanged) {
+            await updateTaskTags(uuid, changes.tags);
+        }
+
+        // Push dates via Things URL scheme (requires auth token)
+        const datesChanged = changes.startDate !== oldStartDate || changes.deadline !== oldDeadline;
+        if (datesChanged) {
+            await updateTaskDates(
+                this.settings.thingsAuthToken,
+                uuid,
+                changes.startDate,
+                changes.deadline
+            );
+        }
+
+        // Update local cache optimistically
+        if (cached) {
+            cached.title = changes.title;
+            cached.notes = changes.notes;
+            cached.tags = changes.tags;
+            cached.startDate = changes.startDate;
+            cached.deadline = changes.deadline;
+        }
+
+        new Notice("Task updated in Things");
+
+        // Refresh display immediately with optimistic data
+        this.dispatchCacheToEditors();
+
+        // Then sync to confirm changes landed
+        await this.runSync();
+    }
+
+    private renderCodeBlock(source: string, el: HTMLElement) {
+        el.empty();
+        const query = parseQuery(source);
+        const tasks = filterTasks(this.taskCache, query);
+
+        const handler: TaskActionHandler = {
+            onToggle: async (uuid: string, completed: boolean) => {
+                try {
+                    if (completed) {
+                        await completeTask(uuid);
+                    } else {
+                        await reopenTask(uuid);
+                    }
+                    const cached = this.taskCache.find((t) => t.uuid === uuid);
+                    if (cached) {
+                        cached.status = completed ? ThingsStatus.Completed : ThingsStatus.Open;
+                    }
+                    this.refreshCodeBlocks();
+                } catch (err) {
+                    new Notice(`Things Sync: Failed to update task — ${err}`);
+                }
+            },
+        };
+
+        if (query.view === "kanban") {
+            renderKanbanView(el, tasks, query, handler, this.settings);
+        } else {
+            renderListView(el, tasks, query, handler, this.settings);
+        }
+    }
+
+    private refreshCodeBlocks() {
+        // Prune detached elements
+        this.codeBlocks = this.codeBlocks.filter((ref) => ref.el.isConnected);
+        for (const ref of this.codeBlocks) {
+            this.renderCodeBlock(ref.source, ref.el);
+        }
+    }
+
+    dispatchCacheToEditors() {
+        const cacheState = buildCacheState(this.taskCache, this.settings);
+        this.taskCacheMap = cacheState.tasks;
+        this.app.workspace.iterateAllLeaves((leaf: WorkspaceLeaf) => {
+            // @ts-expect-error -- MarkdownView exposes .editor?.cm
+            const cm = leaf.view?.editor?.cm as import("@codemirror/view").EditorView | undefined;
+            if (cm) {
+                cm.dispatch({ effects: updateTaskCache.of(cacheState) });
+            }
+        });
+        this.refreshCodeBlocks();
+    }
+
     log(message: string) {
         if (this.settings.debugLogging) {
             console.log(`[Things Sync] ${message}`);
@@ -276,19 +398,21 @@ export default class ThingsSyncPlugin extends Plugin {
     async loadSettings() {
         const data = await this.loadData();
         if (data) {
-            const { syncState: _syncState, ...settingsData } = data;
+            const { syncState: _syncState, cachedTasks: _cachedTasks, ...settingsData } = data;
             this.settings = Object.assign({}, DEFAULT_SETTINGS, settingsData);
         }
     }
 
     async saveSettings() {
         await this.persistState();
+        this.dispatchCacheToEditors();
     }
 
     private async persistState() {
         await this.saveData({
             ...this.settings,
             syncState: this.syncState,
+            cachedTasks: this.taskCache,
         });
     }
 }

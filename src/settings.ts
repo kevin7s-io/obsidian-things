@@ -18,19 +18,6 @@ export class ThingsSyncSettingTab extends PluginSettingTab {
         containerEl.createEl("h3", { text: "Connection" });
 
         new Setting(containerEl)
-            .setName("Things database path")
-            .setDesc("Leave empty for auto-detection")
-            .addText((text) =>
-                text
-                    .setPlaceholder("Auto-detect")
-                    .setValue(this.plugin.settings.dbPath)
-                    .onChange(async (value) => {
-                        this.plugin.settings.dbPath = value;
-                        await this.plugin.saveSettings();
-                    })
-            );
-
-        new Setting(containerEl)
             .setName("Sync interval (seconds)")
             .setDesc("How often to sync with Things. Range: 10-300")
             .addSlider((slider) =>
@@ -56,6 +43,18 @@ export class ThingsSyncSettingTab extends PluginSettingTab {
                     })
             );
 
+        new Setting(containerEl)
+            .setName("Launch Things on startup")
+            .setDesc("Open Things 3 in the background when Obsidian launches")
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(this.plugin.settings.launchThingsOnStartup)
+                    .onChange(async (value) => {
+                        this.plugin.settings.launchThingsOnStartup = value;
+                        await this.plugin.saveSettings();
+                    })
+            );
+
         // Task Format
         containerEl.createEl("h3", { text: "Task Format" });
 
@@ -68,6 +67,20 @@ export class ThingsSyncSettingTab extends PluginSettingTab {
                     .setValue(this.plugin.settings.syncTag)
                     .onChange(async (value) => {
                         this.plugin.settings.syncTag = value;
+                        await this.plugin.saveSettings();
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName("Display mode")
+            .setDesc("How linked Things tasks appear in notes")
+            .addDropdown((dropdown) =>
+                dropdown
+                    .addOption("inline", "Inline badges")
+                    .addOption("card", "Card (Things 3 style)")
+                    .setValue(this.plugin.settings.displayMode)
+                    .onChange(async (value: string) => {
+                        this.plugin.settings.displayMode = value as "inline" | "card";
                         await this.plugin.saveSettings();
                     })
             );
@@ -101,6 +114,28 @@ export class ThingsSyncSettingTab extends PluginSettingTab {
                     .setValue(this.plugin.settings.showArea)
                     .onChange(async (value) => {
                         this.plugin.settings.showArea = value;
+                        await this.plugin.saveSettings();
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName("Show start date in tasks")
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(this.plugin.settings.showStartDate)
+                    .onChange(async (value) => {
+                        this.plugin.settings.showStartDate = value;
+                        await this.plugin.saveSettings();
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName("Show tags in tasks")
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(this.plugin.settings.showTags)
+                    .onChange(async (value) => {
+                        this.plugin.settings.showTags = value;
                         await this.plugin.saveSettings();
                     })
             );
@@ -143,6 +178,19 @@ export class ThingsSyncSettingTab extends PluginSettingTab {
                     .setValue(this.plugin.settings.defaultProject)
                     .onChange(async (value) => {
                         this.plugin.settings.defaultProject = value;
+                        await this.plugin.saveSettings();
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName("Things auth token")
+            .setDesc("Required for editing dates. Found in Things → Settings → General → Enable Things URLs")
+            .addText((text) =>
+                text
+                    .setPlaceholder("Paste auth token here")
+                    .setValue(this.plugin.settings.thingsAuthToken)
+                    .onChange(async (value) => {
+                        this.plugin.settings.thingsAuthToken = value.trim();
                         await this.plugin.saveSettings();
                     })
             );

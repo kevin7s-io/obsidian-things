@@ -1,151 +1,162 @@
-import { spawn } from "child_process";
-import * as os from "os";
-import * as fs from "fs";
-import * as path from "path";
-import Papa from "papaparse";
+import { runJXA, isThingsRunning } from "./things-bridge";
 import { ThingsTask, ThingsStatus, ThingsItemType, ThingsStart } from "./types";
 
-const THINGS_BASE_DIR = "~/Library/Group Containers/JLMPQHK86H.com.culturedcode.ThingsMac/";
-
-export function decodeThingsDate(encoded: number | null): string | null {
-    if (!encoded) return null;
-    const year = (encoded >> 16) & 0x7FF;
-    const month = (encoded >> 12) & 0xF;
-    const day = (encoded >> 7) & 0x1F;
-    if (year === 0 || month === 0 || day === 0) return null;
-    const mm = String(month).padStart(2, "0");
-    const dd = String(day).padStart(2, "0");
-    return `${year}-${mm}-${dd}`;
-}
-
-export function findThingsDbPath(baseDir?: string): string {
-    const resolvedBase = (baseDir || THINGS_BASE_DIR).replace("~", os.homedir());
-    try {
-        const entries = fs.readdirSync(resolvedBase);
-        const dataDir = entries.find((e) => e.startsWith("ThingsData"));
-        if (!dataDir) return "";
-        return path.join(
-            resolvedBase,
-            dataDir,
-            "Things Database.thingsdatabase",
-            "main.sqlite"
-        );
-    } catch {
-        return "";
+export class ThingsNotRunningError extends Error {
+    constructor() {
+        super("Things 3 is not running");
+        this.name = "ThingsNotRunningError";
     }
 }
 
-interface SpawnResult {
-    stdout: string;
-    stderr: string;
-    code: number;
-}
+const READ_ALL_TASKS_JXA = `(function() {
+    var app = Application("Things3");
+    var todos = app.toDos;
+    var count = todos.length;
+    if (count === 0) return "[]";
 
-async function runSqlite(dbPath: string, query: string): Promise<SpawnResult> {
-    return new Promise((resolve) => {
-        const stdoutChunks: Buffer[] = [];
-        const stderrChunks: Buffer[] = [];
+    var ids = todos.id();
+    var names = todos.name();
+    var statuses = todos.status();
+    var notesList = todos.notes();
+    var tagNamesList = todos.tagNames();
+    var activationDates = todos.activationDate();
+    var dueDates = todos.dueDate();
+    var completionDates = todos.completionDate();
+    var creationDates = todos.creationDate();
+    var modificationDates = todos.modificationDate();
 
-        const child = spawn(
-            "sqlite3",
-            [dbPath, "-header", "-csv", "-readonly", query],
-            { detached: true }
-        );
+    var projMap = {};
+    var projects = app.projects;
+    for (var p = 0; p < projects.length; p++) {
+        var pId = projects[p].id();
+        var pName = projects[p].name();
+        var tIds = projects[p].toDos.id();
+        for (var t = 0; t < tIds.length; t++) {
+            projMap[tIds[t]] = [pId, pName];
+        }
+    }
 
-        child.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
-        child.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
-        child.on("error", (err: Error) => {
-            stderrChunks.push(Buffer.from(String(err.stack), "ascii"));
+    var areaMap = {};
+    var areas = app.areas;
+    for (var a = 0; a < areas.length; a++) {
+        var aId = areas[a].id();
+        var aName = areas[a].name();
+        var tIds = areas[a].toDos.id();
+        for (var t = 0; t < tIds.length; t++) {
+            areaMap[tIds[t]] = [aId, aName];
+        }
+    }
+
+    var inboxIds = {};
+    var inboxTodos = app.lists.byName("Inbox").toDos.id();
+    for (var ii = 0; ii < inboxTodos.length; ii++) inboxIds[inboxTodos[ii]] = true;
+
+    var somedayIds = {};
+    var somedayTodos = app.lists.byName("Someday").toDos.id();
+    for (var si = 0; si < somedayTodos.length; si++) somedayIds[somedayTodos[si]] = true;
+
+    var todayIds = {};
+    var todayTodos = app.lists.byName("Today").toDos.id();
+    for (var ti = 0; ti < todayTodos.length; ti++) todayIds[todayTodos[ti]] = true;
+
+    var result = [];
+    for (var i = 0; i < count; i++) {
+        var proj = projMap[ids[i]];
+        var area = areaMap[ids[i]];
+        var s = statuses[i];
+        var status = s === "completed" ? 3 : s === "canceled" ? 2 : 0;
+        var start = inboxIds[ids[i]] ? 0 : somedayIds[ids[i]] ? 2 : 1;
+        var tags = tagNamesList[i] ? tagNamesList[i].split(", ").sort() : [];
+        var ad = activationDates[i];
+        var dd = dueDates[i];
+        var cd = completionDates[i];
+        var crd = creationDates[i];
+        var md = modificationDates[i];
+
+        result.push({
+            uuid: ids[i],
+            title: names[i],
+            status: status,
+            notes: notesList[i] || "",
+            project: proj ? proj[0] : null,
+            projectTitle: proj ? proj[1] : null,
+            area: area ? area[0] : null,
+            areaTitle: area ? area[1] : null,
+            tags: tags,
+            startDate: ad ? fmtDate(ad) : null,
+            deadline: dd ? fmtDate(dd) : null,
+            stopDate: cd ? Math.floor(cd.getTime() / 1000) : null,
+            creationDate: crd ? Math.floor(crd.getTime() / 1000) : 0,
+            modificationDate: md ? Math.floor(md.getTime() / 1000) : 0,
+            start: start,
+            inTodayList: !!todayIds[ids[i]]
         });
-        child.on("close", (code: number) => {
-            resolve({
-                stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
-                stderr: Buffer.concat(stderrChunks).toString("utf-8"),
-                code: code ?? 1,
-            });
-        });
-    });
-}
+    }
+    return JSON.stringify(result);
 
-function parseCSV<T>(csv: string): T[] {
-    return Papa.parse<T>(csv, {
-        dynamicTyping: false,
-        header: true,
-        newline: "\n",
-        skipEmptyLines: true,
-    }).data;
-}
+    function fmtDate(d) {
+        var y = d.getFullYear();
+        var m = String(d.getMonth() + 1);
+        if (m.length < 2) m = "0" + m;
+        var day = String(d.getDate());
+        if (day.length < 2) day = "0" + day;
+        return y + "-" + m + "-" + day;
+    }
+})()`;
 
-interface RawTaskRow {
+interface RawJXATask {
     uuid: string;
     title: string;
-    status: string;
-    type: string;
+    status: number;
     notes: string;
-    project: string;
-    projectTitle: string;
-    area: string;
-    areaTitle: string;
-    tag: string;
-    startDate: string;
-    deadline: string;
-    stopDate: string;
-    creationDate: string;
-    userModificationDate: string;
-    start: string;
-    trashed: string;
+    project: string | null;
+    projectTitle: string | null;
+    area: string | null;
+    areaTitle: string | null;
+    tags: string[];
+    startDate: string | null;
+    deadline: string | null;
+    stopDate: number | null;
+    creationDate: number;
+    modificationDate: number;
+    start: number;
+    inTodayList: boolean;
 }
 
-function rowToTask(row: RawTaskRow): ThingsTask {
+export function rawToTask(raw: RawJXATask): ThingsTask {
     return {
-        uuid: row.uuid,
-        title: row.title,
-        status: Number(row.status) as ThingsStatus,
-        type: Number(row.type) as ThingsItemType,
-        notes: row.notes || "",
-        project: row.project || null,
-        projectTitle: row.projectTitle || null,
-        area: row.area || null,
-        areaTitle: row.areaTitle || null,
-        tags: [],
-        startDate: decodeThingsDate(Number(row.startDate) || null),
-        deadline: decodeThingsDate(Number(row.deadline) || null),
-        stopDate: Number(row.stopDate) || null,
-        creationDate: Number(row.creationDate),
-        userModificationDate: Number(row.userModificationDate),
-        start: Number(row.start) as ThingsStart,
-        trashed: row.trashed === "1",
+        uuid: raw.uuid,
+        title: raw.title,
+        status: raw.status as ThingsStatus,
+        type: ThingsItemType.Todo,
+        notes: raw.notes,
+        project: raw.project,
+        projectTitle: raw.projectTitle,
+        area: raw.area,
+        areaTitle: raw.areaTitle,
+        tags: raw.tags,
+        startDate: raw.startDate,
+        deadline: raw.deadline,
+        stopDate: raw.stopDate,
+        creationDate: raw.creationDate,
+        userModificationDate: raw.modificationDate,
+        start: raw.start as ThingsStart,
+        inTodayList: raw.inTodayList,
+        trashed: false,
     };
 }
 
-const TASKS_QUERY = `
-SELECT
-    T.uuid, T.title, T.status, T.type, T.notes,
-    T.project, P.title as projectTitle,
-    T.area, A.title as areaTitle,
-    GROUP_CONCAT(TG.title) as tag,
-    T.startDate, T.deadline, T.stopDate,
-    T.creationDate, T.userModificationDate,
-    T.start, T.trashed
-FROM TMTask T
-LEFT JOIN TMTask P ON P.uuid = T.project
-LEFT JOIN TMArea A ON A.uuid = T.area
-LEFT JOIN TMTaskTag TT ON TT.tasks = T.uuid
-LEFT JOIN TMTag TG ON TG.uuid = TT.tags
-WHERE T.trashed = 0 AND T.type = 0
-GROUP BY T.uuid
-`;
-
-export async function readAllTasks(dbPath: string): Promise<ThingsTask[]> {
-    const result = await runSqlite(dbPath, TASKS_QUERY);
-    if (result.stderr) {
-        throw new Error(`SQLite error: ${result.stderr}`);
+export async function readAllTasks(): Promise<ThingsTask[]> {
+    const running = await isThingsRunning();
+    if (!running) {
+        throw new ThingsNotRunningError();
     }
-    const rows = parseCSV<RawTaskRow>(result.stdout);
-    return rows.map((row) => {
-        const task = rowToTask(row);
-        task.tags = row.tag ? row.tag.split(",").map((t) => t.trim()) : [];
-        return task;
-    });
-}
 
+    const result = await runJXA(READ_ALL_TASKS_JXA);
+    if (result.code !== 0) {
+        throw new Error(`JXA error: ${result.stderr}`);
+    }
+
+    const raw: RawJXATask[] = JSON.parse(result.stdout);
+    return raw.map(rawToTask);
+}
