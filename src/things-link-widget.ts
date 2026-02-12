@@ -461,6 +461,14 @@ export const thingsLinkViewPlugin = ViewPlugin.fromClass(
             }
         }
         build(view: EditorView): DecorationSet {
+            try {
+                return this._build(view);
+            } catch (err) {
+                console.error("[Things Sync] ViewPlugin build error:", err);
+                return Decoration.none;
+            }
+        }
+        _build(view: EditorView): DecorationSet {
             if (!view.state.field(editorLivePreviewField)) {
                 return Decoration.none;
             }

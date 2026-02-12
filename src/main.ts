@@ -1,7 +1,7 @@
 import { Notice, Platform, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import { ThingsSyncSettings, DEFAULT_SETTINGS, ThingsTask, ThingsStatus, SyncState, ScannedTask } from "./types";
 import { readAllTasks, ThingsNotRunningError } from "./things-reader";
-import { createTask, completeTask, reopenTask, updateTaskNotes, updateTaskTags, updateTaskDates, launchThingsInBackground } from "./things-writer";
+import { createTask, completeTask, reopenTask, updateTaskTitle, updateTaskNotes, updateTaskTags, updateTaskDates, launchThingsInBackground } from "./things-writer";
 import { parseLine, buildTaskLine, scanFileContent } from "./markdown-scanner";
 import { parseQuery, filterTasks } from "./query-parser";
 import { renderListView, renderKanbanView, TaskActionHandler } from "./renderer";
@@ -310,9 +310,15 @@ export default class ThingsSyncPlugin extends Plugin {
         this.log(`Updating metadata for task ${uuid}`);
 
         const cached = this.taskCache.find((t) => t.uuid === uuid);
+        const oldTitle = cached?.title ?? "";
         const oldNotes = cached?.notes ?? "";
         const oldStartDate = cached?.startDate ?? null;
         const oldDeadline = cached?.deadline ?? null;
+
+        // Push title via AppleScript (silent, no auth needed)
+        if (changes.title !== oldTitle) {
+            await updateTaskTitle(uuid, changes.title);
+        }
 
         // Push notes via AppleScript (silent, no auth needed)
         if (changes.notes !== oldNotes) {
@@ -339,6 +345,7 @@ export default class ThingsSyncPlugin extends Plugin {
 
         // Update local cache optimistically
         if (cached) {
+            cached.title = changes.title;
             cached.notes = changes.notes;
             cached.tags = changes.tags;
             cached.startDate = changes.startDate;

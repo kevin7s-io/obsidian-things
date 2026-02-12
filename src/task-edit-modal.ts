@@ -2,6 +2,7 @@ import { App, Modal, Setting } from "obsidian";
 import type { ThingsTask } from "./types";
 
 export interface TaskMetadataChanges {
+    title: string;
     notes: string;
     tags: string[];
     startDate: string | null;
@@ -9,6 +10,7 @@ export interface TaskMetadataChanges {
 }
 
 export class TaskEditModal extends Modal {
+    private title: string;
     private notes: string;
     private tags: string;
     private startDate: string;
@@ -21,6 +23,7 @@ export class TaskEditModal extends Modal {
         private onSave: (uuid: string, changes: TaskMetadataChanges) => Promise<void>
     ) {
         super(app);
+        this.title = task.title;
         this.notes = task.notes ?? "";
         this.tags = (task.tags ?? []).join(", ");
         this.startDate = task.startDate ?? "";
@@ -41,7 +44,15 @@ export class TaskEditModal extends Modal {
             this.modalEl.style.marginLeft = `${sidebarWidth}px`;
         }
 
-        contentEl.createEl("h3", { text: this.task.title });
+        // Title
+        const titleInput = contentEl.createEl("input", {
+            type: "text",
+            cls: "things-edit-title",
+        });
+        titleInput.value = this.title;
+        titleInput.addEventListener("input", () => {
+            this.title = titleInput.value;
+        });
 
         // Notes
         new Setting(contentEl)
@@ -59,8 +70,7 @@ export class TaskEditModal extends Modal {
 
         // Tags
         new Setting(contentEl)
-            .setName("Tags")
-            .setDesc("Comma-separated tag names")
+            .setName("Tags (comma separated)")
             .addText((text) => {
                 text.setValue(this.tags)
                     .setPlaceholder("tag1, tag2")
@@ -127,6 +137,7 @@ export class TaskEditModal extends Modal {
                     .map((t) => t.trim())
                     .filter((t) => t.length > 0);
                 await this.onSave(this.task.uuid, {
+                    title: this.title,
                     notes: this.notes,
                     tags: parsedTags,
                     startDate: this.startDate || null,
