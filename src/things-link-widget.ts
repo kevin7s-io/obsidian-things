@@ -14,14 +14,14 @@ const CALENDAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="12" he
 // Flag icon for deadline (matches Things' flag)
 const FLAG_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 14 14"><path d="M3 13V1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M3 2h8l-2.5 2.75L11 7.5H3z" fill="currentColor" opacity="0.25" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>';
 
-// Circular checkbox SVGs for card view
-const CHECKBOX_OPEN_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"/></svg>';
-const CHECKBOX_DONE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="#4A89DC"/><path d="M7 11.5l3 3 5.5-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+// Rounded-square checkbox SVGs for card view (matches Things 3 style)
+const CHECKBOX_OPEN_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 13 13"><rect x="0.75" y="0.75" width="11.5" height="11.5" rx="2.8" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.4"/></svg>';
+const CHECKBOX_DONE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 13 13"><rect x="0.75" y="0.75" width="11.5" height="11.5" rx="2.8" fill="#4A89DC"/><path d="M4 7l1.8 1.8 3.2-3.6" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 // Project/folder icon for card footer
 const PROJECT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 14 14"><path d="M1.5 3.5v7a1 1 0 001 1h9a1 1 0 001-1v-5.5a1 1 0 00-1-1H7L5.5 2.5h-3a1 1 0 00-1 1z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>';
 
-// Pencil/edit icon for card edit button
+// Pencil icon for card edit button
 const EDIT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14"><path d="M2.5 11.5l-.5 2 2-.5 7.8-7.8-1.5-1.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M8.8 3.7l1.5 1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
 
 // Module-level edit handler — set by main.ts, used by ViewPlugin widgets
@@ -135,18 +135,94 @@ function buildCardDOM(
     title.textContent = task.title;
     content.appendChild(title);
 
-    if (task.notes) {
-        const firstLine = task.notes.split("\n")[0] ?? "";
-        if (firstLine.length > 0) {
-            const notes = document.createElement("div");
-            notes.className = "things-card-notes";
-            notes.textContent = firstLine.length > 80 ? firstLine.slice(0, 80) + "\u2026" : firstLine;
-            content.appendChild(notes);
-        }
+    if (task.notes?.trim()) {
+        const notes = document.createElement("div");
+        notes.className = "things-card-notes";
+        notes.textContent = task.notes;
+        content.appendChild(notes);
     }
+    // Footer: vertical stack — tags row, start date row, deadline row (with edit button)
+    // Lives inside content div so it aligns with title/notes
+    const footer = document.createElement("div");
+    footer.className = "things-card-footer";
+    let hasFooter = false;
+
+    // Tags row
+    if (settings.showTags && task.tags.length > 0) {
+        const tagRow = document.createElement("div");
+        tagRow.className = "things-card-row";
+        for (const tag of task.tags) {
+            const pill = document.createElement("span");
+            pill.className = "things-card-tag";
+            pill.style.background = tagColor(tag);
+            pill.textContent = tag;
+            tagRow.appendChild(pill);
+        }
+        footer.appendChild(tagRow);
+        hasFooter = true;
+    }
+
+    // Start date row
+    if (settings.showStartDate && task.startDate) {
+        const row = document.createElement("div");
+        row.className = "things-card-row things-card-date things-card-scheduled";
+        row.innerHTML = CALENDAR_ICON_SVG + " ";
+        row.appendChild(document.createTextNode(formatRelativeDate(task.startDate)));
+        footer.appendChild(row);
+        hasFooter = true;
+    }
+
+    // Area row
+    if (settings.showArea && task.areaTitle) {
+        const row = document.createElement("div");
+        row.className = "things-card-row things-card-area";
+        row.textContent = task.areaTitle;
+        footer.appendChild(row);
+        hasFooter = true;
+    }
+
+    // Project row
+    if (settings.showProject && task.projectTitle) {
+        const row = document.createElement("div");
+        row.className = "things-card-row things-card-project";
+        row.innerHTML = PROJECT_ICON_SVG + " ";
+        row.appendChild(document.createTextNode(task.projectTitle));
+        footer.appendChild(row);
+        hasFooter = true;
+    }
+
+    // Deadline row
+    if (settings.showDeadline && task.deadline) {
+        const countdown = formatDeadlineCountdown(task.deadline);
+        const row = document.createElement("div");
+        row.className = "things-card-row things-card-date things-card-deadline";
+        if (countdown.overdue) row.classList.add("things-card-deadline-overdue");
+        row.innerHTML = FLAG_ICON_SVG + " ";
+        const dateText = formatRelativeDate(task.deadline);
+        row.appendChild(document.createTextNode("Deadline: " + dateText));
+        if (countdown.text !== dateText) {
+            const countdownSpan = document.createElement("span");
+            countdownSpan.className = "things-card-countdown";
+            countdownSpan.textContent = countdown.text;
+            row.appendChild(document.createTextNode("  "));
+            row.appendChild(countdownSpan);
+        }
+        footer.appendChild(row);
+        hasFooter = true;
+    }
+
+    if (hasFooter) {
+        content.appendChild(footer);
+    }
+
     main.appendChild(content);
 
-    // Card actions: edit + open in Things
+    // Things logo link (top-right)
+    main.appendChild(createThingsLogoLink(uuid));
+
+    card.appendChild(main);
+
+    // Edit button — absolutely positioned at bottom-right of card
     if (onEdit) {
         const editBtn = document.createElement("span");
         editBtn.className = "things-card-edit";
@@ -157,68 +233,7 @@ function buildCardDOM(
             e.stopPropagation();
             onEdit();
         });
-        main.appendChild(editBtn);
-    }
-    main.appendChild(createThingsLogoLink(uuid));
-
-    card.appendChild(main);
-
-    // Footer: tags, dates, project, area
-    const footerItems: HTMLElement[] = [];
-
-    if (settings.showTags && task.tags.length > 0) {
-        for (const tag of task.tags) {
-            const pill = document.createElement("span");
-            pill.className = "things-card-tag";
-            pill.style.background = tagColor(tag);
-            pill.textContent = tag;
-            footerItems.push(pill);
-        }
-    }
-
-    if (settings.showStartDate && task.startDate) {
-        const span = document.createElement("span");
-        span.className = "things-card-date things-card-scheduled";
-        span.innerHTML = CALENDAR_ICON_SVG + " ";
-        span.appendChild(document.createTextNode(formatRelativeDate(task.startDate)));
-        footerItems.push(span);
-    }
-
-    if (settings.showDeadline && task.deadline) {
-        const countdown = formatDeadlineCountdown(task.deadline);
-        const span = document.createElement("span");
-        span.className = "things-card-date things-card-deadline";
-        if (countdown.overdue) span.classList.add("things-card-deadline-overdue");
-        span.innerHTML = FLAG_ICON_SVG + " ";
-        const dateText = formatRelativeDate(task.deadline);
-        if (countdown.text !== dateText) {
-            span.appendChild(document.createTextNode(`${dateText} \u00B7 ${countdown.text}`));
-        } else {
-            span.appendChild(document.createTextNode(countdown.text));
-        }
-        footerItems.push(span);
-    }
-
-    if (settings.showArea && task.areaTitle) {
-        const span = document.createElement("span");
-        span.className = "things-card-area";
-        span.textContent = task.areaTitle;
-        footerItems.push(span);
-    }
-
-    if (settings.showProject && task.projectTitle) {
-        const span = document.createElement("span");
-        span.className = "things-card-project";
-        span.innerHTML = PROJECT_ICON_SVG + " ";
-        span.appendChild(document.createTextNode(task.projectTitle));
-        footerItems.push(span);
-    }
-
-    if (footerItems.length > 0) {
-        const footer = document.createElement("div");
-        footer.className = "things-card-footer";
-        for (const item of footerItems) footer.appendChild(item);
-        card.appendChild(footer);
+        card.appendChild(editBtn);
     }
 
     return card;

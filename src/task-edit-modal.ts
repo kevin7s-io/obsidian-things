@@ -3,12 +3,14 @@ import type { ThingsTask } from "./types";
 
 export interface TaskMetadataChanges {
     notes: string;
+    tags: string[];
     startDate: string | null;
     deadline: string | null;
 }
 
 export class TaskEditModal extends Modal {
     private notes: string;
+    private tags: string;
     private startDate: string;
     private deadline: string;
     private saved = false;
@@ -20,6 +22,7 @@ export class TaskEditModal extends Modal {
     ) {
         super(app);
         this.notes = task.notes ?? "";
+        this.tags = (task.tags ?? []).join(", ");
         this.startDate = task.startDate ?? "";
         this.deadline = task.deadline ?? "";
     }
@@ -28,6 +31,15 @@ export class TaskEditModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.addClass("things-edit-modal");
+
+        // Center modal over the editor pane, not the full window
+        const leftSplit = this.app.workspace.containerEl.querySelector(
+            ".workspace-split.mod-left-split"
+        ) as HTMLElement | null;
+        if (leftSplit) {
+            const sidebarWidth = leftSplit.getBoundingClientRect().width;
+            this.modalEl.style.marginLeft = `${sidebarWidth}px`;
+        }
 
         contentEl.createEl("h3", { text: this.task.title });
 
@@ -43,6 +55,19 @@ export class TaskEditModal extends Modal {
                     });
                 text.inputEl.rows = 6;
                 text.inputEl.addClass("things-edit-notes");
+            });
+
+        // Tags
+        new Setting(contentEl)
+            .setName("Tags")
+            .setDesc("Comma-separated tag names")
+            .addText((text) => {
+                text.setValue(this.tags)
+                    .setPlaceholder("tag1, tag2")
+                    .onChange((value) => {
+                        this.tags = value;
+                    });
+                text.inputEl.addClass("things-edit-tags");
             });
 
         // Scheduled date
@@ -90,15 +115,20 @@ export class TaskEditModal extends Modal {
         cancelBtn.addEventListener("click", () => this.close());
 
         const saveBtn = buttonRow.createEl("button", {
-            text: "Save to Things",
+            text: "Save",
             cls: "mod-cta",
         });
         saveBtn.addEventListener("click", async () => {
             saveBtn.disabled = true;
-            saveBtn.textContent = "Saving...";
+            saveBtn.textContent = "Saving\u2026";
             try {
+                const parsedTags = this.tags
+                    .split(",")
+                    .map((t) => t.trim())
+                    .filter((t) => t.length > 0);
                 await this.onSave(this.task.uuid, {
                     notes: this.notes,
+                    tags: parsedTags,
                     startDate: this.startDate || null,
                     deadline: this.deadline || null,
                 });
@@ -106,7 +136,7 @@ export class TaskEditModal extends Modal {
                 this.close();
             } catch (err) {
                 saveBtn.disabled = false;
-                saveBtn.textContent = "Save to Things";
+                saveBtn.textContent = "Save";
                 const errEl = contentEl.querySelector(".things-edit-error");
                 if (errEl) errEl.remove();
                 contentEl.createEl("div", {

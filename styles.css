@@ -164,6 +164,7 @@ a.things-badge-tag:hover {
 
 .things-card {
     display: block;
+    position: relative;
     background: var(--background-secondary);
     border: 1px solid var(--background-modifier-border);
     border-radius: 10px;
@@ -185,10 +186,10 @@ a.things-badge-tag:hover {
 
 .things-card-checkbox {
     flex-shrink: 0;
-    width: 22px;
-    height: 22px;
+    width: 13px;
+    height: 13px;
     cursor: pointer;
-    margin-top: 1px;
+    margin-top: 4px;
 }
 .things-card-checkbox svg {
     display: block;
@@ -207,9 +208,7 @@ a.things-badge-tag:hover {
     font-size: 0.85em;
     color: var(--text-muted);
     margin-top: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: pre-line;
 }
 
 /* Things logo link in card */
@@ -220,7 +219,7 @@ a.things-badge-tag:hover {
     transition: opacity 0.15s;
     display: inline-flex;
     align-items: center;
-    margin-top: 2px;
+    margin-top: 3px;
 }
 .things-card-link:hover {
     opacity: 1;
@@ -228,17 +227,22 @@ a.things-badge-tag:hover {
 
 .things-card-footer {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
+    flex-direction: column;
+    gap: 6px;
     margin-top: 10px;
     padding-top: 8px;
     font-size: 0.85em;
 }
 
+.things-card-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
 .things-card-tag {
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: 10px;
     font-weight: 500;
     color: #fff;
     font-size: 0.9em;
@@ -262,13 +266,15 @@ a.things-badge-tag:hover {
 .things-card-deadline-overdue {
     color: var(--text-error);
 }
+.things-card-countdown {
+    color: var(--text-faint);
+}
 
 .things-card-project {
     display: inline-flex;
     align-items: center;
     gap: 4px;
     color: var(--text-muted);
-    margin-left: auto;
 }
 .things-card-project svg {
     display: block;
@@ -289,16 +295,16 @@ a.things-badge-tag:hover {
     display: none;
 }
 
-/* Edit button in card */
+/* Edit button in card (bottom-right, absolutely positioned) */
 .things-card-edit {
-    flex-shrink: 0;
+    position: absolute;
+    bottom: 12px;
+    right: 14px;
     cursor: pointer;
     opacity: 0.35;
     transition: opacity 0.15s;
     display: inline-flex;
     align-items: center;
-    margin-top: 2px;
-    margin-right: 2px;
     color: var(--text-muted);
 }
 .things-card-edit:hover {
@@ -306,18 +312,29 @@ a.things-badge-tag:hover {
 }
 
 /* --- Task Edit Modal --- */
+.things-edit-modal {
+    padding: 0;
+}
 .things-edit-modal h3 {
     margin-top: 0;
     margin-bottom: 12px;
 }
-.things-edit-notes-setting .setting-item-control {
+.things-edit-modal .setting-item {
+    padding: 12px 0;
+}
+.things-edit-modal .setting-item-info {
+    flex: 0 0 90px;
+}
+.things-edit-modal .setting-item-control {
     flex-grow: 1;
 }
 .things-edit-notes {
     width: 100% !important;
-    min-width: 300px;
     font-family: var(--font-monospace);
     font-size: 0.9em;
+}
+.things-edit-tags {
+    width: 100% !important;
 }
 .things-edit-date {
     padding: 4px 8px;

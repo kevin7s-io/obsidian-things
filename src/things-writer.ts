@@ -1,3 +1,4 @@
+import { exec } from "child_process";
 import { runAppleScript, escapeAppleScript, validateUuid } from "./things-bridge";
 
 export function buildCreateScript(title: string, project?: string): string {
@@ -74,41 +75,31 @@ export function buildUpdateNotesScript(uuid: string, notes: string): string {
     return `tell application "Things3" to set notes of to do id "${uuid}" to ${notesExpr}`;
 }
 
-export function buildUpdateStartDateScript(uuid: string, isoDate: string | null): string {
+export function buildUpdateUrl(
+    authToken: string,
+    uuid: string,
+    params: Record<string, string>
+): string {
     validateUuid(uuid);
-    if (!isoDate) {
-        return `tell application "Things3" to set activation date of to do id "${uuid}" to missing value`;
-    }
-    const [year, month, day] = isoDate.split("-").map(Number);
-    // Build date programmatically to avoid locale issues
-    return [
-        "tell application \"Things3\"",
-        "set d to current date",
-        `set year of d to ${year}`,
-        `set month of d to ${month}`,
-        `set day of d to ${day}`,
-        "set time of d to 0",
-        `set activation date of to do id "${uuid}" to d`,
-        "end tell",
-    ].join("\n");
+    const query = new URLSearchParams({
+        "auth-token": authToken,
+        id: uuid,
+        ...params,
+    });
+    return `things:///update?${query.toString()}`;
 }
 
-export function buildUpdateDeadlineScript(uuid: string, isoDate: string | null): string {
+export function buildUpdateTagsScript(uuid: string, tags: string[]): string {
     validateUuid(uuid);
-    if (!isoDate) {
-        return `tell application "Things3" to set due date of to do id "${uuid}" to missing value`;
+    const tagStr = tags.map((t) => escapeAppleScript(t)).join(", ");
+    return `tell application "Things3" to set tag names of to do id "${uuid}" to "${tagStr}"`;
+}
+
+export async function updateTaskTags(uuid: string, tags: string[]): Promise<void> {
+    const result = await runAppleScript(buildUpdateTagsScript(uuid, tags));
+    if (result.stderr) {
+        throw new Error(`AppleScript error: ${result.stderr}`);
     }
-    const [year, month, day] = isoDate.split("-").map(Number);
-    return [
-        "tell application \"Things3\"",
-        "set d to current date",
-        `set year of d to ${year}`,
-        `set month of d to ${month}`,
-        `set day of d to ${day}`,
-        "set time of d to 0",
-        `set due date of to do id "${uuid}" to d`,
-        "end tell",
-    ].join("\n");
 }
 
 export async function updateTaskNotes(uuid: string, notes: string): Promise<void> {
@@ -118,18 +109,32 @@ export async function updateTaskNotes(uuid: string, notes: string): Promise<void
     }
 }
 
-export async function updateTaskStartDate(uuid: string, isoDate: string | null): Promise<void> {
-    const result = await runAppleScript(buildUpdateStartDateScript(uuid, isoDate));
-    if (result.stderr) {
-        throw new Error(`AppleScript error: ${result.stderr}`);
+export async function updateTaskDates(
+    authToken: string,
+    uuid: string,
+    startDate: string | null,
+    deadline: string | null
+): Promise<void> {
+    if (!authToken) {
+        throw new Error("Things auth token not configured. Set it in plugin settings.");
     }
+    const params: Record<string, string> = {};
+    // "when" sets the scheduled date; empty string clears it
+    if (startDate !== undefined) params.when = startDate ?? "";
+    if (deadline !== undefined) params.deadline = deadline ?? "";
+    if (Object.keys(params).length === 0) return;
+
+    const url = buildUpdateUrl(authToken, uuid, params);
+    return new Promise((resolve, reject) => {
+        exec(`open -g "${url}"`, (err) => {
+            if (err) reject(new Error(`Failed to open Things URL: ${err.message}`));
+            else resolve();
+        });
+    });
 }
 
-export async function updateTaskDeadline(uuid: string, isoDate: string | null): Promise<void> {
-    const result = await runAppleScript(buildUpdateDeadlineScript(uuid, isoDate));
-    if (result.stderr) {
-        throw new Error(`AppleScript error: ${result.stderr}`);
-    }
+export function launchThingsInBackground(): void {
+    exec("open -g -a Things3");
 }
 
 export async function getTaskUuid(title: string): Promise<string> {

@@ -1,7 +1,7 @@
 import { Notice, Platform, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import { ThingsSyncSettings, DEFAULT_SETTINGS, ThingsTask, ThingsStatus, SyncState, ScannedTask } from "./types";
 import { readAllTasks, ThingsNotRunningError } from "./things-reader";
-import { createTask, completeTask, reopenTask, updateTaskNotes, updateTaskStartDate, updateTaskDeadline } from "./things-writer";
+import { createTask, completeTask, reopenTask, updateTaskNotes, updateTaskTags, updateTaskDates, launchThingsInBackground } from "./things-writer";
 import { parseLine, buildTaskLine, scanFileContent } from "./markdown-scanner";
 import { parseQuery, filterTasks } from "./query-parser";
 import { renderListView, renderKanbanView, TaskActionHandler } from "./renderer";
@@ -26,10 +26,14 @@ export default class ThingsSyncPlugin extends Plugin {
             return;
         }
 
-        // Load sync state (stored alongside settings in data.json)
+        // Load persisted state (sync state + cached tasks from last session)
         const savedData = await this.loadData();
         if (savedData?.syncState) {
             this.syncState = savedData.syncState;
+        }
+        if (savedData?.cachedTasks?.length) {
+            this.taskCache = savedData.cachedTasks;
+            this.log(`Loaded ${this.taskCache.length} cached tasks from last session`);
         }
 
         // Register code block processor
@@ -106,9 +110,19 @@ export default class ThingsSyncPlugin extends Plugin {
         // Settings tab
         this.addSettingTab(new ThingsSyncSettingTab(this.app, this));
 
+        // Dispatch persisted cache immediately so content renders before first sync
+        if (this.taskCache.length > 0) {
+            this.dispatchCacheToEditors();
+        }
+
+        // Launch Things in background if configured
+        if (this.settings.launchThingsOnStartup) {
+            launchThingsInBackground();
+        }
+
         // Initial sync
         if (this.settings.syncOnStartup) {
-            // Delay slightly to let vault finish loading
+            // Delay slightly to let vault finish loading (and Things to launch)
             setTimeout(() => this.runSync(), 2000);
         }
 
@@ -295,31 +309,46 @@ export default class ThingsSyncPlugin extends Plugin {
     async updateTaskMetadata(uuid: string, changes: TaskMetadataChanges) {
         this.log(`Updating metadata for task ${uuid}`);
 
-        // Push changes to Things via AppleScript
         const cached = this.taskCache.find((t) => t.uuid === uuid);
         const oldNotes = cached?.notes ?? "";
         const oldStartDate = cached?.startDate ?? null;
         const oldDeadline = cached?.deadline ?? null;
 
+        // Push notes via AppleScript (silent, no auth needed)
         if (changes.notes !== oldNotes) {
             await updateTaskNotes(uuid, changes.notes);
         }
-        if (changes.startDate !== oldStartDate) {
-            await updateTaskStartDate(uuid, changes.startDate);
+
+        // Push tags via AppleScript (silent, no auth needed)
+        const oldTags = cached?.tags ?? [];
+        const tagsChanged = changes.tags.join(",") !== oldTags.join(",");
+        if (tagsChanged) {
+            await updateTaskTags(uuid, changes.tags);
         }
-        if (changes.deadline !== oldDeadline) {
-            await updateTaskDeadline(uuid, changes.deadline);
+
+        // Push dates via Things URL scheme (requires auth token)
+        const datesChanged = changes.startDate !== oldStartDate || changes.deadline !== oldDeadline;
+        if (datesChanged) {
+            await updateTaskDates(
+                this.settings.thingsAuthToken,
+                uuid,
+                changes.startDate,
+                changes.deadline
+            );
         }
 
         // Update local cache optimistically
         if (cached) {
             cached.notes = changes.notes;
+            cached.tags = changes.tags;
             cached.startDate = changes.startDate;
             cached.deadline = changes.deadline;
         }
 
-        this.dispatchCacheToEditors();
         new Notice("Task updated in Things");
+
+        // Sync to confirm changes landed and refresh display
+        await this.runSync();
     }
 
     dispatchCacheToEditors() {
@@ -343,7 +372,7 @@ export default class ThingsSyncPlugin extends Plugin {
     async loadSettings() {
         const data = await this.loadData();
         if (data) {
-            const { syncState: _syncState, ...settingsData } = data;
+            const { syncState: _syncState, cachedTasks: _cachedTasks, ...settingsData } = data;
             this.settings = Object.assign({}, DEFAULT_SETTINGS, settingsData);
         }
     }
@@ -357,6 +386,7 @@ export default class ThingsSyncPlugin extends Plugin {
         await this.saveData({
             ...this.settings,
             syncState: this.syncState,
+            cachedTasks: this.taskCache,
         });
     }
 }

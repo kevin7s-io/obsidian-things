@@ -62,6 +62,7 @@ export interface ScannedTask {
 export interface ThingsSyncSettings {
     syncIntervalSeconds: number;
     syncOnStartup: boolean;
+    launchThingsOnStartup: boolean;
     syncTag: string;
     showProject: boolean;
     showDeadline: boolean;
@@ -74,6 +75,7 @@ export interface ThingsSyncSettings {
     autoCreate: boolean;
     defaultProject: string;
     defaultTags: string;
+    thingsAuthToken: string;
     debugLogging: boolean;
     dryRun: boolean;
 }
@@ -81,6 +83,7 @@ export interface ThingsSyncSettings {
 export const DEFAULT_SETTINGS: ThingsSyncSettings = {
     syncIntervalSeconds: 30,
     syncOnStartup: true,
+    launchThingsOnStartup: true,
     syncTag: "#things",
     showProject: true,
     showDeadline: true,
@@ -93,6 +96,7 @@ export const DEFAULT_SETTINGS: ThingsSyncSettings = {
     autoCreate: true,
     defaultProject: "Inbox",
     defaultTags: "",
+    thingsAuthToken: "",
     debugLogging: false,
     dryRun: false,
 };

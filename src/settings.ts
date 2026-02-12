@@ -43,6 +43,18 @@ export class ThingsSyncSettingTab extends PluginSettingTab {
                     })
             );
 
+        new Setting(containerEl)
+            .setName("Launch Things on startup")
+            .setDesc("Open Things 3 in the background when Obsidian launches")
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(this.plugin.settings.launchThingsOnStartup)
+                    .onChange(async (value) => {
+                        this.plugin.settings.launchThingsOnStartup = value;
+                        await this.plugin.saveSettings();
+                    })
+            );
+
         // Task Format
         containerEl.createEl("h3", { text: "Task Format" });
 
@@ -166,6 +178,19 @@ export class ThingsSyncSettingTab extends PluginSettingTab {
                     .setValue(this.plugin.settings.defaultProject)
                     .onChange(async (value) => {
                         this.plugin.settings.defaultProject = value;
+                        await this.plugin.saveSettings();
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName("Things auth token")
+            .setDesc("Required for editing dates. Found in Things → Settings → General → Enable Things URLs")
+            .addText((text) =>
+                text
+                    .setPlaceholder("Paste auth token here")
+                    .setValue(this.plugin.settings.thingsAuthToken)
+                    .onChange(async (value) => {
+                        this.plugin.settings.thingsAuthToken = value.trim();
                         await this.plugin.saveSettings();
                     })
             );
