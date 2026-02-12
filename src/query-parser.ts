@@ -48,14 +48,6 @@ export function parseQuery(source: string): ParsedQuery {
     return query;
 }
 
-function getToday(): string {
-    const d = new Date();
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
-}
-
 export function filterTasks(tasks: ThingsTask[], query: ParsedQuery): ThingsTask[] {
     let result = [...tasks];
 
@@ -63,8 +55,7 @@ export function filterTasks(tasks: ThingsTask[], query: ParsedQuery): ThingsTask
     if (query.list) {
         switch (query.list) {
             case "today":
-                const today = getToday();
-                result = result.filter((t) => t.startDate === today);
+                result = result.filter((t) => t.inTodayList);
                 break;
             case "inbox":
                 result = result.filter((t) => t.start === ThingsStart.Inbox);

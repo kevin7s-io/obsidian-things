@@ -19,12 +19,12 @@ export function parseLine(line: string, tag: string): ParsedLine | null {
     if (!tagRegex.test(body)) return null;
 
     // Extract UUID
-    const uuidMatch = body.match(/%%things:([^%]+)%%/);
-    const uuid = uuidMatch ? uuidMatch[1]!.replace(/^to do id /, "") : null;
+    const uuidMatch = body.match(/<!--\s*things:(.+?)\s*-->/);
+    const uuid = uuidMatch ? uuidMatch[1]!.trim().replace(/^to do id /, "") : null;
 
     // Build title: remove UUID comment, tag, and post-tag metadata
     let title = body;
-    title = title.replace(/%%things:[^%]+%%/, "");  // remove UUID
+    title = title.replace(/<!--\s*things:.+?\s*-->/, "");  // remove UUID
     title = title.replace(tagRegex, " ");             // remove tag
     title = title.replace(/\s*\(.*?\)\s*/g, " ");    // remove (Project)
     title = title.replace(/\s*📅\s*\S+/g, "");       // remove deadline
@@ -44,7 +44,7 @@ interface BuildTaskLineOpts {
 
 export function buildTaskLine(opts: BuildTaskLineOpts): string {
     const checkbox = opts.checked ? "[x]" : "[ ]";
-    return `- ${checkbox} ${opts.title} ${opts.tag} %%things:${opts.uuid}%%`;
+    return `- ${checkbox} ${opts.title} ${opts.tag} <!-- things:${opts.uuid} -->`;
 }
 
 export function extractTagFromLine(line: string, tag: string): boolean {

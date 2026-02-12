@@ -175,19 +175,20 @@ a.things-badge-tag:hover {
     transition: border-color 0.15s;
 }
 .things-card:hover {
-    border-color: var(--interactive-accent);
+    border-color: var(--background-modifier-border);
 }
 
 .things-card-main {
     display: flex;
     align-items: flex-start;
     gap: 10px;
+    min-height: 40px;
 }
 
 .things-card-checkbox {
     flex-shrink: 0;
-    width: 13px;
-    height: 13px;
+    width: var(--checkbox-size, 15px);
+    height: var(--checkbox-size, 15px);
     cursor: pointer;
     margin-top: 4px;
 }

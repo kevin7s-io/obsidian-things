@@ -29,6 +29,7 @@ describe("rawToTask", () => {
             creationDate: 1739000000,
             modificationDate: 1739100000,
             start: 1,
+            inTodayList: true,
         };
 
         const task = rawToTask(raw);
@@ -48,6 +49,7 @@ describe("rawToTask", () => {
         expect(task.creationDate).toBe(1739000000);
         expect(task.userModificationDate).toBe(1739100000);
         expect(task.start).toBe(ThingsStart.Anytime);
+        expect(task.inTodayList).toBe(true);
         expect(task.trashed).toBe(false);
     });
 
@@ -68,6 +70,7 @@ describe("rawToTask", () => {
             creationDate: 1739000000,
             modificationDate: 1739200000,
             start: 1,
+            inTodayList: false,
         };
 
         const task = rawToTask(raw);
@@ -92,6 +95,7 @@ describe("rawToTask", () => {
             creationDate: 1739000000,
             modificationDate: 1739000000,
             start: 1,
+            inTodayList: false,
         };
 
         const task = rawToTask(raw);

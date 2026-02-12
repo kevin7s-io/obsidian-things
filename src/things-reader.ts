@@ -55,6 +55,10 @@ const READ_ALL_TASKS_JXA = `(function() {
     var somedayTodos = app.lists.byName("Someday").toDos.id();
     for (var si = 0; si < somedayTodos.length; si++) somedayIds[somedayTodos[si]] = true;
 
+    var todayIds = {};
+    var todayTodos = app.lists.byName("Today").toDos.id();
+    for (var ti = 0; ti < todayTodos.length; ti++) todayIds[todayTodos[ti]] = true;
+
     var result = [];
     for (var i = 0; i < count; i++) {
         var proj = projMap[ids[i]];
@@ -62,7 +66,7 @@ const READ_ALL_TASKS_JXA = `(function() {
         var s = statuses[i];
         var status = s === "completed" ? 3 : s === "canceled" ? 2 : 0;
         var start = inboxIds[ids[i]] ? 0 : somedayIds[ids[i]] ? 2 : 1;
-        var tags = tagNamesList[i] ? tagNamesList[i].split(", ") : [];
+        var tags = tagNamesList[i] ? tagNamesList[i].split(", ").sort() : [];
         var ad = activationDates[i];
         var dd = dueDates[i];
         var cd = completionDates[i];
@@ -84,7 +88,8 @@ const READ_ALL_TASKS_JXA = `(function() {
             stopDate: cd ? Math.floor(cd.getTime() / 1000) : null,
             creationDate: crd ? Math.floor(crd.getTime() / 1000) : 0,
             modificationDate: md ? Math.floor(md.getTime() / 1000) : 0,
-            start: start
+            start: start,
+            inTodayList: !!todayIds[ids[i]]
         });
     }
     return JSON.stringify(result);
@@ -115,6 +120,7 @@ interface RawJXATask {
     creationDate: number;
     modificationDate: number;
     start: number;
+    inTodayList: boolean;
 }
 
 export function rawToTask(raw: RawJXATask): ThingsTask {
@@ -135,6 +141,7 @@ export function rawToTask(raw: RawJXATask): ThingsTask {
         creationDate: raw.creationDate,
         userModificationDate: raw.modificationDate,
         start: raw.start as ThingsStart,
+        inTodayList: raw.inTodayList,
         trashed: false,
     };
 }

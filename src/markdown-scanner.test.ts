@@ -14,7 +14,7 @@ describe("parseLine", () => {
 
     it("parses a checked task with UUID", () => {
         const result = parseLine(
-            "- [x] Call dentist #things %%things:ABC-123%%",
+            "- [x] Call dentist #things <!-- things:ABC-123 -->",
             tag
         );
         expect(result).not.toBeNull();
@@ -25,7 +25,7 @@ describe("parseLine", () => {
 
     it("parses a task with project and deadline metadata", () => {
         const result = parseLine(
-            "- [ ] Fix bug #things (Work) 📅 2026-03-01 %%things:DEF-456%%",
+            "- [ ] Fix bug #things (Work) 📅 2026-03-01 <!-- things:DEF-456 -->",
             tag
         );
         expect(result).not.toBeNull();
@@ -72,7 +72,7 @@ describe("parseLine", () => {
 
     it("parses tag at beginning with UUID", () => {
         const result = parseLine(
-            "- [ ] #things Buy groceries %%things:ABC-123%%",
+            "- [ ] #things Buy groceries <!-- things:ABC-123 -->",
             tag
         );
         expect(result).not.toBeNull();
@@ -89,7 +89,7 @@ describe("buildTaskLine", () => {
             uuid: "ABC-123",
             tag: "#things",
         });
-        expect(line).toBe("- [ ] Buy groceries #things %%things:ABC-123%%");
+        expect(line).toBe("- [ ] Buy groceries #things <!-- things:ABC-123 -->");
     });
 
     it("builds a checked task line", () => {
@@ -99,7 +99,7 @@ describe("buildTaskLine", () => {
             uuid: "DEF-456",
             tag: "#things",
         });
-        expect(line).toBe("- [x] Done task #things %%things:DEF-456%%");
+        expect(line).toBe("- [x] Done task #things <!-- things:DEF-456 -->");
     });
 
     it("builds a clean line without inline metadata", () => {
@@ -109,7 +109,7 @@ describe("buildTaskLine", () => {
             uuid: "GHI-789",
             tag: "#things",
         });
-        expect(line).toBe("- [ ] Fix bug #things %%things:GHI-789%%");
+        expect(line).toBe("- [ ] Fix bug #things <!-- things:GHI-789 -->");
     });
 });
 
@@ -118,7 +118,7 @@ describe("parseLine backward compat", () => {
 
     it("parses old format with project, deadline, and area", () => {
         const result = parseLine(
-            "- [ ] Fix bug #things (Work) 📅 2026-03-01 [Personal] %%things:DEF-456%%",
+            "- [ ] Fix bug #things (Work) 📅 2026-03-01 [Personal] <!-- things:DEF-456 -->",
             tag
         );
         expect(result).not.toBeNull();
@@ -128,7 +128,7 @@ describe("parseLine backward compat", () => {
 
     it("parses new clean format", () => {
         const result = parseLine(
-            "- [ ] Fix bug #things %%things:DEF-456%%",
+            "- [ ] Fix bug #things <!-- things:DEF-456 -->",
             tag
         );
         expect(result).not.toBeNull();

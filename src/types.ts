@@ -15,6 +15,7 @@ export interface ThingsTask {
     creationDate: number;
     userModificationDate: number;
     start: ThingsStart;
+    inTodayList: boolean;
     trashed: boolean;
 }
 

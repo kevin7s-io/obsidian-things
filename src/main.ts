@@ -17,6 +17,7 @@ export default class ThingsSyncPlugin extends Plugin {
     taskCacheMap: Map<string, ThingsTask> = new Map();
     syncState: SyncState = { lastSyncTimestamp: 0, tasks: {} };
     syncing = false;
+    private codeBlocks: Array<{ el: HTMLElement; source: string }> = [];
 
     async onload() {
         await this.loadSettings();
@@ -38,33 +39,8 @@ export default class ThingsSyncPlugin extends Plugin {
 
         // Register code block processor
         this.registerMarkdownCodeBlockProcessor("things", (source, el) => {
-            const query = parseQuery(source);
-            const tasks = filterTasks(this.taskCache, query);
-
-            const handler: TaskActionHandler = {
-                onToggle: async (uuid: string, completed: boolean) => {
-                    try {
-                        if (completed) {
-                            await completeTask(uuid);
-                        } else {
-                            await reopenTask(uuid);
-                        }
-                        // Update cache optimistically
-                        const cached = this.taskCache.find((t) => t.uuid === uuid);
-                        if (cached) {
-                            cached.status = completed ? ThingsStatus.Completed : ThingsStatus.Open;
-                        }
-                    } catch (err) {
-                        new Notice(`Things Sync: Failed to update task — ${err}`);
-                    }
-                },
-            };
-
-            if (query.view === "kanban") {
-                renderKanbanView(el, tasks, query, handler, this.settings.showProject, this.settings.showDeadline);
-            } else {
-                renderListView(el, tasks, query, handler, this.settings.showProject, this.settings.showDeadline);
-            }
+            this.codeBlocks.push({ el, source });
+            this.renderCodeBlock(source, el);
         });
 
         // Edit handler — opens modal, pushes changes to Things
@@ -354,8 +330,50 @@ export default class ThingsSyncPlugin extends Plugin {
 
         new Notice("Task updated in Things");
 
-        // Sync to confirm changes landed and refresh display
+        // Refresh display immediately with optimistic data
+        this.dispatchCacheToEditors();
+
+        // Then sync to confirm changes landed
         await this.runSync();
+    }
+
+    private renderCodeBlock(source: string, el: HTMLElement) {
+        el.empty();
+        const query = parseQuery(source);
+        const tasks = filterTasks(this.taskCache, query);
+
+        const handler: TaskActionHandler = {
+            onToggle: async (uuid: string, completed: boolean) => {
+                try {
+                    if (completed) {
+                        await completeTask(uuid);
+                    } else {
+                        await reopenTask(uuid);
+                    }
+                    const cached = this.taskCache.find((t) => t.uuid === uuid);
+                    if (cached) {
+                        cached.status = completed ? ThingsStatus.Completed : ThingsStatus.Open;
+                    }
+                    this.refreshCodeBlocks();
+                } catch (err) {
+                    new Notice(`Things Sync: Failed to update task — ${err}`);
+                }
+            },
+        };
+
+        if (query.view === "kanban") {
+            renderKanbanView(el, tasks, query, handler, this.settings);
+        } else {
+            renderListView(el, tasks, query, handler, this.settings);
+        }
+    }
+
+    private refreshCodeBlocks() {
+        // Prune detached elements
+        this.codeBlocks = this.codeBlocks.filter((ref) => ref.el.isConnected);
+        for (const ref of this.codeBlocks) {
+            this.renderCodeBlock(ref.source, ref.el);
+        }
     }
 
     dispatchCacheToEditors() {
@@ -368,6 +386,7 @@ export default class ThingsSyncPlugin extends Plugin {
                 cm.dispatch({ effects: updateTaskCache.of(cacheState) });
             }
         });
+        this.refreshCodeBlocks();
     }
 
     log(message: string) {

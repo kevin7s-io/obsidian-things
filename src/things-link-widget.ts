@@ -15,8 +15,8 @@ const CALENDAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="12" he
 const FLAG_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 14 14"><path d="M3 13V1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M3 2h8l-2.5 2.75L11 7.5H3z" fill="currentColor" opacity="0.25" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>';
 
 // Rounded-square checkbox SVGs for card view (matches Things 3 style)
-const CHECKBOX_OPEN_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 13 13"><rect x="0.75" y="0.75" width="11.5" height="11.5" rx="2.8" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.4"/></svg>';
-const CHECKBOX_DONE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 13 13"><rect x="0.75" y="0.75" width="11.5" height="11.5" rx="2.8" fill="#4A89DC"/><path d="M4 7l1.8 1.8 3.2-3.6" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const CHECKBOX_OPEN_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 15 15"><rect x="0.75" y="0.75" width="13.5" height="13.5" rx="3.2" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.4"/></svg>';
+const CHECKBOX_DONE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 15 15"><rect x="0.75" y="0.75" width="13.5" height="13.5" rx="3.2" fill="#4A89DC"/><path d="M4.5 8l2.1 2.1 3.7-4.2" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 // Project/folder icon for card footer
 const PROJECT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 14 14"><path d="M1.5 3.5v7a1 1 0 001 1h9a1 1 0 001-1v-5.5a1 1 0 00-1-1H7L5.5 2.5h-3a1 1 0 00-1 1z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>';
@@ -81,7 +81,7 @@ interface CardSettings extends BadgeSettings {
     syncTag: string;
 }
 
-function createThingsLogoLink(uuid: string): HTMLElement {
+export function createThingsLogoLink(uuid: string): HTMLElement {
     const cleanUuid = uuid.replace(/^to do id /, "").replace(/%/g, "").trim();
     const link = document.createElement("span");
     link.className = "things-card-link";
@@ -239,7 +239,7 @@ function buildCardDOM(
     return card;
 }
 
-function createThingsLogo(): HTMLElement {
+export function createThingsLogo(): HTMLElement {
     const span = document.createElement("span");
     span.className = "things-logo";
     span.setAttribute("aria-label", "Linked to Things");
@@ -247,7 +247,7 @@ function createThingsLogo(): HTMLElement {
     return span;
 }
 
-function createThingsIcon(uuid: string): HTMLElement {
+export function createThingsIcon(uuid: string): HTMLElement {
     const cleanUuid = uuid.replace(/^to do id /, "").replace(/%/g, "").trim();
     const icon = document.createElement("span");
     icon.className = "things-link-icon";
@@ -273,7 +273,7 @@ function formatDate(iso: string): string {
     return `${monthStr} ${day}, ${year}`;
 }
 
-interface BadgeSettings {
+export interface BadgeSettings {
     showProject: boolean;
     showDeadline: boolean;
     showArea: boolean;
@@ -281,7 +281,7 @@ interface BadgeSettings {
     showTags: boolean;
 }
 
-function createMetadataBadges(task: ThingsTask, settings: BadgeSettings, readingView: boolean): DocumentFragment {
+export function createMetadataBadges(task: ThingsTask, settings: BadgeSettings, readingView: boolean): DocumentFragment {
     const frag = document.createDocumentFragment();
     const container = document.createElement("span");
     container.className = "things-inline-meta";
@@ -420,7 +420,7 @@ class ThingsCardWidget extends WidgetType {
         const onCheckboxToggle = () => {
             // Find the line containing this UUID
             const doc = view.state.doc;
-            const uuidPattern = `%%things:${this.uuid}%%`;
+            const uuidPattern = `<!-- things:${this.uuid} -->`;
             for (let i = 1; i <= doc.lines; i++) {
                 const line = doc.line(i);
                 if (!line.text.includes(uuidPattern)) continue;
@@ -475,18 +475,29 @@ export const thingsLinkViewPlugin = ViewPlugin.fromClass(
             const cacheState = view.state.field(taskCacheField);
             const builder = new RangeSetBuilder<Decoration>();
             const cursorLine = view.state.doc.lineAt(view.state.selection.main.head).number;
-            const uuidRegex = /%%things:([^%]+)%%/g;
+            const uuidRegex = /<!--\s*things:(\S+)\s*-->/g;
 
-            if (cacheState.displayMode === "card") {
-                // Card mode: replace entire line with ThingsCardWidget
-                for (let i = 1; i <= view.state.doc.lines; i++) {
-                    if (i === cursorLine) continue;
-                    const line = view.state.doc.line(i);
-                    uuidRegex.lastIndex = 0;
-                    const uuidMatch = uuidRegex.exec(line.text);
-                    if (!uuidMatch) continue;
-                    const uuid = uuidMatch[1]!.replace(/^to do id /, "");
-                    const task = cacheState.tasks.get(uuid);
+            // First pass: identify which lines contain UUID patterns
+            const uuidLines = new Set<number>();
+            for (let i = 1; i <= view.state.doc.lines; i++) {
+                const line = view.state.doc.line(i);
+                uuidRegex.lastIndex = 0;
+                if (uuidRegex.test(line.text)) uuidLines.add(i);
+            }
+
+            // Second pass: build task decorations in document order
+            for (let i = 1; i <= view.state.doc.lines; i++) {
+                if (!uuidLines.has(i) || i === cursorLine) continue;
+                const line = view.state.doc.line(i);
+
+                uuidRegex.lastIndex = 0;
+                const uuidMatch = uuidRegex.exec(line.text);
+                if (!uuidMatch) continue;
+
+                const uuid = uuidMatch[1]!.replace(/^to do id /, "");
+                const task = cacheState.tasks.get(uuid);
+
+                if (cacheState.displayMode === "card") {
                     builder.add(
                         line.from,
                         line.to,
@@ -494,26 +505,12 @@ export const thingsLinkViewPlugin = ViewPlugin.fromClass(
                             widget: new ThingsCardWidget(uuid, task, cacheState, line.text),
                         })
                     );
-                }
-            } else {
-                // Inline mode: existing decoration logic
-                const syncTag = cacheState.syncTag;
-                const escapedTag = syncTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-                const tagRegex = new RegExp(`${escapedTag}(?=\\s|$)`);
-
-                for (let i = 1; i <= view.state.doc.lines; i++) {
-                    if (i === cursorLine) continue;
-                    const line = view.state.doc.line(i);
-
-                    uuidRegex.lastIndex = 0;
-                    const uuidMatch = uuidRegex.exec(line.text);
-                    if (!uuidMatch) continue;
-
-                    const uuid = uuidMatch[1]!.replace(/^to do id /, "");
-                    const task = cacheState.tasks.get(uuid);
+                } else {
+                    const syncTag = cacheState.syncTag;
+                    const escapedTag = syncTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                    const tagRegex = new RegExp(`${escapedTag}(?=\\s|$)`);
                     const isCheckbox = /^- \[[ x]\] /.test(line.text);
 
-                    // Decorations must be added in ascending position order.
                     // 0. Override Obsidian's %% comment styling on the task text.
                     const contentEnd = uuidMatch.index;
                     builder.add(
@@ -585,7 +582,7 @@ class ThingsLinkChild extends MarkdownRenderChild {
         let liIndex = 0;
         for (const line of sourceLines) {
             if (!/^- \[[ x]\]/.test(line)) continue;
-            const uuidMatch = line.match(/%%things:([^%]+)%%/);
+            const uuidMatch = line.match(/<!--\s*things:(\S+)\s*-->/);
             if (uuidMatch && liIndex < this.listItems.length) {
                 const uuid = uuidMatch[1]!.replace(/^to do id /, "");
                 const li = this.listItems[liIndex]! as HTMLElement;
