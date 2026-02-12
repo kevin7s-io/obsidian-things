@@ -4,14 +4,16 @@ interface ParsedLine {
     checked: boolean;
     title: string;
     uuid: string | null;
+    indent: string;
 }
 
 export function parseLine(line: string, tag: string): ParsedLine | null {
-    const checkboxMatch = line.match(/^- \[([ x])\] (.+)$/);
+    const checkboxMatch = line.match(/^(\s*)- \[([ x])\] (.+)$/);
     if (!checkboxMatch) return null;
 
-    const checked = checkboxMatch[1] === "x";
-    let body = checkboxMatch[2]!;
+    const indent = checkboxMatch[1]!;
+    const checked = checkboxMatch[2] === "x";
+    let body = checkboxMatch[3]!;
 
     // Tag must be present (as whole word, not substring like #thingsmore)
     const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -32,31 +34,21 @@ export function parseLine(line: string, tag: string): ParsedLine | null {
     title = title.replace(/\s{2,}/g, " ");              // collapse whitespace
     title = title.trim();
 
-    return { checked, title, uuid };
+    return { checked, title, uuid, indent };
 }
 
-interface BuildTaskLineOpts {
+export interface BuildTaskLineOpts {
     checked: boolean;
     title: string;
     uuid: string;
     tag: string;
+    indent?: string;
 }
 
 export function buildTaskLine(opts: BuildTaskLineOpts): string {
     const checkbox = opts.checked ? "[x]" : "[ ]";
-    return `- ${checkbox} ${opts.title} ${opts.tag} <!-- things:${opts.uuid} -->`;
-}
-
-export function extractTagFromLine(line: string, tag: string): boolean {
-    return line.includes(tag);
-}
-
-export interface VaultScanner {
-    scanFile(
-        content: string,
-        filePath: string,
-        tag: string
-    ): ScannedTask[];
+    const prefix = opts.indent || "";
+    return `${prefix}- ${checkbox} ${opts.title} ${opts.tag} <!-- things:${opts.uuid} -->`;
 }
 
 export function scanFileContent(
@@ -77,6 +69,7 @@ export function scanFileContent(
                 title: parsed.title,
                 uuid: parsed.uuid,
                 rawLine: lines[i]!,
+                indent: parsed.indent,
             });
         }
     }

@@ -2,6 +2,7 @@ import { App, MarkdownPostProcessorContext, MarkdownRenderChild, editorLivePrevi
 import { ViewPlugin, ViewUpdate, DecorationSet, Decoration, WidgetType, EditorView } from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
 import { taskCacheField, TaskCacheState } from "./task-cache-state";
+import { validateUuid } from "./things-bridge";
 import type { ThingsTask, ThingsStatus } from "./types";
 
 // --- Shared helpers ---
@@ -85,14 +86,21 @@ export function createThingsLogoLink(uuid: string): HTMLElement {
     const cleanUuid = uuid.replace(/^to do id /, "").replace(/%/g, "").trim();
     const link = document.createElement("span");
     link.className = "things-card-link";
-    link.setAttribute("aria-label", `Open in Things: ${cleanUuid}`);
-    link.setAttribute("data-tooltip-position", "top");
     link.innerHTML = THINGS_LOGO_SVG;
-    link.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        window.open(`things:///show?id=${cleanUuid}`);
-    });
+
+    // Only make clickable if UUID is valid
+    let isValid = true;
+    try { validateUuid(cleanUuid); } catch { isValid = false; }
+
+    if (isValid) {
+        link.setAttribute("aria-label", `Open in Things: ${cleanUuid}`);
+        link.setAttribute("data-tooltip-position", "top");
+        link.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            window.open(`things:///show?id=${encodeURIComponent(cleanUuid)}`);
+        });
+    }
     return link;
 }
 
@@ -251,14 +259,21 @@ export function createThingsIcon(uuid: string): HTMLElement {
     const cleanUuid = uuid.replace(/^to do id /, "").replace(/%/g, "").trim();
     const icon = document.createElement("span");
     icon.className = "things-link-icon";
-    icon.setAttribute("aria-label", `Open in Things: ${cleanUuid}`);
-    icon.setAttribute("data-tooltip-position", "top");
     icon.textContent = "\u{1F517}";
-    icon.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        window.open(`things:///show?id=${cleanUuid}`);
-    });
+
+    // Only make clickable if UUID is valid
+    let isValid = true;
+    try { validateUuid(cleanUuid); } catch { isValid = false; }
+
+    if (isValid) {
+        icon.setAttribute("aria-label", `Open in Things: ${cleanUuid}`);
+        icon.setAttribute("data-tooltip-position", "top");
+        icon.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            window.open(`things:///show?id=${encodeURIComponent(cleanUuid)}`);
+        });
+    }
     return icon;
 }
 
@@ -370,8 +385,9 @@ class ThingsMetadataWidget extends WidgetType {
 
     eq(other: ThingsMetadataWidget): boolean {
         return this.uuid === other.uuid &&
-            this.task === other.task &&
-            this.cacheState === other.cacheState;
+            this.task?.userModificationDate === other.task?.userModificationDate &&
+            this.task?.status === other.task?.status &&
+            this.task?.title === other.task?.title;
     }
 
     toDOM(): HTMLElement {
@@ -398,9 +414,12 @@ class ThingsCardWidget extends WidgetType {
 
     eq(other: ThingsCardWidget): boolean {
         return this.uuid === other.uuid &&
-            this.task === other.task &&
-            this.cacheState === other.cacheState &&
-            this.lineText === other.lineText;
+            this.lineText === other.lineText &&
+            this.task?.userModificationDate === other.task?.userModificationDate &&
+            this.task?.status === other.task?.status &&
+            this.task?.title === other.task?.title &&
+            this.task?.notes === other.task?.notes &&
+            this.task?.tags?.join(",") === other.task?.tags?.join(",");
     }
 
     get estimatedHeight(): number {
@@ -579,13 +598,17 @@ class ThingsLinkChild extends MarkdownRenderChild {
         const sourceLines = section.text.split("\n").slice(section.lineStart, section.lineEnd + 1);
         const taskCache = this.getTaskCache();
         const settings = this.getSettings();
+        // Filter to only task list items to avoid index misalignment with non-checkbox <li> elements
+        const taskItems = Array.from(this.listItems).filter(
+            (li) => li.classList.contains("task-list-item") || li.querySelector("input[type=checkbox]")
+        );
         let liIndex = 0;
         for (const line of sourceLines) {
             if (!/^- \[[ x]\]/.test(line)) continue;
             const uuidMatch = line.match(/<!--\s*things:(\S+)\s*-->/);
-            if (uuidMatch && liIndex < this.listItems.length) {
+            if (uuidMatch && liIndex < taskItems.length) {
                 const uuid = uuidMatch[1]!.replace(/^to do id /, "");
-                const li = this.listItems[liIndex]! as HTMLElement;
+                const li = taskItems[liIndex]! as HTMLElement;
                 const task = taskCache.get(uuid);
 
                 if (settings.displayMode === "card" && task) {

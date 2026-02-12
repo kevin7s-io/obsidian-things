@@ -58,6 +58,7 @@ export interface ScannedTask {
     title: string;
     uuid: string | null;
     rawLine: string;
+    indent?: string;
 }
 
 export interface ThingsSyncSettings {

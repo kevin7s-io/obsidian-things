@@ -1,4 +1,4 @@
-import { exec } from "child_process";
+import { execFile, spawn } from "child_process";
 import { runAppleScript, escapeAppleScript, validateUuid } from "./things-bridge";
 
 export function buildCreateScript(title: string, project?: string): string {
@@ -126,7 +126,7 @@ export async function updateTaskDates(
 
     const url = buildUpdateUrl(authToken, uuid, params);
     return new Promise((resolve, reject) => {
-        exec(`open -g "${url}"`, (err) => {
+        execFile("open", ["-g", url], (err) => {
             if (err) reject(new Error(`Failed to open Things URL: ${err.message}`));
             else resolve();
         });
@@ -134,7 +134,10 @@ export async function updateTaskDates(
 }
 
 export function launchThingsInBackground(): void {
-    exec("open -g -a Things3");
+    const child = spawn("open", ["-g", "-a", "Things3"]);
+    child.on("error", (err) => {
+        console.warn("[Things Sync] Failed to launch Things:", err.message);
+    });
 }
 
 export async function getTaskUuid(title: string): Promise<string> {

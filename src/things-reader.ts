@@ -1,4 +1,4 @@
-import { runJXA, isThingsRunning } from "./things-bridge";
+import { runJXA } from "./things-bridge";
 import { ThingsTask, ThingsStatus, ThingsItemType, ThingsStart } from "./types";
 
 export class ThingsNotRunningError extends Error {
@@ -147,13 +147,11 @@ export function rawToTask(raw: RawJXATask): ThingsTask {
 }
 
 export async function readAllTasks(): Promise<ThingsTask[]> {
-    const running = await isThingsRunning();
-    if (!running) {
-        throw new ThingsNotRunningError();
-    }
-
     const result = await runJXA(READ_ALL_TASKS_JXA);
     if (result.code !== 0) {
+        if (result.stderr.includes("not running") || result.stderr.includes("isn't running")) {
+            throw new ThingsNotRunningError();
+        }
         throw new Error(`JXA error: ${result.stderr}`);
     }
 

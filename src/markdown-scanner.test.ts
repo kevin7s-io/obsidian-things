@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseLine, buildTaskLine, extractTagFromLine } from "./markdown-scanner";
+import { parseLine, buildTaskLine, scanFileContent } from "./markdown-scanner";
 
 describe("parseLine", () => {
     const tag = "#things";
@@ -10,6 +10,7 @@ describe("parseLine", () => {
         expect(result!.checked).toBe(false);
         expect(result!.title).toBe("Buy groceries");
         expect(result!.uuid).toBeNull();
+        expect(result!.indent).toBe("");
     });
 
     it("parses a checked task with UUID", () => {
@@ -21,6 +22,7 @@ describe("parseLine", () => {
         expect(result!.checked).toBe(true);
         expect(result!.title).toBe("Call dentist");
         expect(result!.uuid).toBe("ABC-123");
+        expect(result!.indent).toBe("");
     });
 
     it("parses a task with project and deadline metadata", () => {
@@ -79,6 +81,30 @@ describe("parseLine", () => {
         expect(result!.title).toBe("Buy groceries");
         expect(result!.uuid).toBe("ABC-123");
     });
+
+    it("parses an indented task with 2-space indent", () => {
+        const result = parseLine(
+            "  - [ ] Indented task #things <!-- things:UUID-1 -->",
+            tag
+        );
+        expect(result).not.toBeNull();
+        expect(result!.checked).toBe(false);
+        expect(result!.title).toBe("Indented task");
+        expect(result!.uuid).toBe("UUID-1");
+        expect(result!.indent).toBe("  ");
+    });
+
+    it("parses a deeply indented checked task with 4-space indent", () => {
+        const result = parseLine(
+            "    - [x] Deep indent #things <!-- things:UUID-2 -->",
+            tag
+        );
+        expect(result).not.toBeNull();
+        expect(result!.checked).toBe(true);
+        expect(result!.title).toBe("Deep indent");
+        expect(result!.uuid).toBe("UUID-2");
+        expect(result!.indent).toBe("    ");
+    });
 });
 
 describe("buildTaskLine", () => {
@@ -111,6 +137,17 @@ describe("buildTaskLine", () => {
         });
         expect(line).toBe("- [ ] Fix bug #things <!-- things:GHI-789 -->");
     });
+
+    it("preserves indentation when indent is provided", () => {
+        const line = buildTaskLine({
+            checked: false,
+            title: "Subtask",
+            uuid: "IND-001",
+            tag: "#things",
+            indent: "    ",
+        });
+        expect(line).toBe("    - [ ] Subtask #things <!-- things:IND-001 -->");
+    });
 });
 
 describe("parseLine backward compat", () => {
@@ -134,5 +171,34 @@ describe("parseLine backward compat", () => {
         expect(result).not.toBeNull();
         expect(result!.title).toBe("Fix bug");
         expect(result!.uuid).toBe("DEF-456");
+    });
+});
+
+describe("scanFileContent with indented tasks", () => {
+    const tag = "#things";
+
+    it("finds indented tasks in file content", () => {
+        const content = [
+            "- [ ] Top-level #things <!-- things:TOP-1 -->",
+            "  - [ ] Subtask #things <!-- things:SUB-1 -->",
+            "    - [x] Deep subtask #things <!-- things:DEEP-1 -->",
+            "Some plain text",
+        ].join("\n");
+
+        const tasks = scanFileContent(content, "test.md", tag);
+        expect(tasks).toHaveLength(3);
+
+        expect(tasks[0]!.title).toBe("Top-level");
+        expect(tasks[0]!.indent).toBe("");
+        expect(tasks[0]!.line).toBe(0);
+
+        expect(tasks[1]!.title).toBe("Subtask");
+        expect(tasks[1]!.indent).toBe("  ");
+        expect(tasks[1]!.line).toBe(1);
+
+        expect(tasks[2]!.title).toBe("Deep subtask");
+        expect(tasks[2]!.indent).toBe("    ");
+        expect(tasks[2]!.checked).toBe(true);
+        expect(tasks[2]!.line).toBe(2);
     });
 });
