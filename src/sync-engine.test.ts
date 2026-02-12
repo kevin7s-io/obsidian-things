@@ -31,6 +31,7 @@ const makeScanned = (overrides: Partial<ScannedTask> = {}): ScannedTask => ({
     title: "Test task",
     uuid: "UUID-1",
     rawLine: "- [ ] Test task #things <!-- things:UUID-1 -->",
+    indent: "",
     ...overrides,
 });
 

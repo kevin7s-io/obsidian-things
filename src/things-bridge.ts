@@ -7,7 +7,9 @@ export interface ScriptResult {
 }
 
 export function escapeAppleScript(str: string): string {
-    return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    let safe = str.replace(/\0/g, "").replace(/\r/g, "");
+    safe = safe.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    return safe;
 }
 
 const UUID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
@@ -39,7 +41,7 @@ function runOsascript(args: string[]): Promise<ScriptResult> {
         const stdoutChunks: Buffer[] = [];
         const stderrChunks: Buffer[] = [];
 
-        const child = spawn("osascript", args, { detached: true });
+        const child = spawn("osascript", args);
 
         child.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
         child.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));

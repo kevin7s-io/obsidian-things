@@ -17,6 +17,7 @@ export default class ThingsSyncPlugin extends Plugin {
     taskCacheMap: Map<string, ThingsTask> = new Map();
     syncState: SyncState = { lastSyncTimestamp: 0, tasks: {} };
     syncing = false;
+    private syncIntervalId: number | null = null;
     private codeBlocks: Array<{ el: HTMLElement; source: string }> = [];
 
     async onload() {
@@ -39,6 +40,7 @@ export default class ThingsSyncPlugin extends Plugin {
 
         // Register code block processor
         this.registerMarkdownCodeBlockProcessor("things", (source, el) => {
+            this.codeBlocks = this.codeBlocks.filter((ref) => ref.el.isConnected);
             this.codeBlocks.push({ el, source });
             this.renderCodeBlock(source, el);
         });
@@ -79,9 +81,7 @@ export default class ThingsSyncPlugin extends Plugin {
         });
 
         // Register sync interval
-        this.registerInterval(
-            window.setInterval(() => this.runSync(), this.settings.syncIntervalSeconds * 1000)
-        );
+        this.resetSyncInterval();
 
         // Settings tab
         this.addSettingTab(new ThingsSyncSettingTab(this.app, this));
@@ -150,6 +150,41 @@ export default class ThingsSyncPlugin extends Plugin {
                 }
             }
 
+            // Step 4b: Update scanned data to reflect mutations from actions
+            for (const action of actions) {
+                switch (action.type) {
+                    case "complete-in-obsidian": {
+                        if (!action.uuid) break;
+                        const scanned = scannedTasks.find(s => s.uuid === action.uuid);
+                        if (scanned) scanned.checked = true;
+                        break;
+                    }
+                    case "reopen-in-obsidian": {
+                        if (!action.uuid) break;
+                        const scanned = scannedTasks.find(s => s.uuid === action.uuid);
+                        if (scanned) scanned.checked = false;
+                        break;
+                    }
+                    case "create-in-things": {
+                        // After creating a task in Things, the UUID was assigned in applyAction.
+                        // Find the scanned task by filePath+line and set its uuid so sync state records it.
+                        if (action.filePath !== undefined && action.line !== undefined) {
+                            const scanned = scannedTasks.find(
+                                s => s.filePath === action.filePath && s.line === action.line
+                            );
+                            if (scanned && !scanned.uuid) {
+                                // The uuid was written to syncState in applyAction; retrieve it
+                                const entry = Object.values(this.syncState.tasks).find(
+                                    t => t.filePath === action.filePath && t.line === action.line
+                                );
+                                if (entry) scanned.uuid = entry.uuid;
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+
             // Step 5: Update sync state
             const now = Date.now() / 1000;
             this.syncState.lastSyncTimestamp = now;
@@ -197,14 +232,16 @@ export default class ThingsSyncPlugin extends Plugin {
                     if (file instanceof TFile) {
                         await this.app.vault.process(file, (content: string) => {
                             const lines = content.split("\n");
-                            if (lines[action.line!]) {
-                                lines[action.line!] = buildTaskLine({
-                                    checked: action.scannedTask!.checked,
-                                    title: action.scannedTask!.title,
-                                    uuid,
-                                    tag: this.settings.syncTag,
-                                });
+                            // Verify line contains expected task content before modifying
+                            if (!lines[action.line!]?.includes(action.scannedTask!.title)) {
+                                return content; // return unchanged
                             }
+                            lines[action.line!] = buildTaskLine({
+                                checked: action.scannedTask!.checked,
+                                title: action.scannedTask!.title,
+                                uuid,
+                                tag: this.settings.syncTag,
+                            });
                             return lines.join("\n");
                         });
                     }
@@ -242,14 +279,16 @@ export default class ThingsSyncPlugin extends Plugin {
                     if (file instanceof TFile) {
                         await this.app.vault.process(file, (content: string) => {
                             const lines = content.split("\n");
-                            if (lines[action.line!]) {
-                                lines[action.line!] = buildTaskLine({
-                                    checked,
-                                    title: action.thingsTask!.title,
-                                    uuid: action.uuid!,
-                                    tag: this.settings.syncTag,
-                                });
+                            // Verify line contains expected UUID before modifying
+                            if (action.uuid && !lines[action.line!]?.includes(action.uuid)) {
+                                return content; // return unchanged
                             }
+                            lines[action.line!] = buildTaskLine({
+                                checked,
+                                title: action.thingsTask!.title,
+                                uuid: action.uuid!,
+                                tag: this.settings.syncTag,
+                            });
                             return lines.join("\n");
                         });
                     }
@@ -264,15 +303,17 @@ export default class ThingsSyncPlugin extends Plugin {
                     if (file instanceof TFile) {
                         await this.app.vault.process(file, (content: string) => {
                             const lines = content.split("\n");
-                            if (lines[action.line!]) {
-                                const parsed = parseLine(lines[action.line!]!, this.settings.syncTag);
-                                lines[action.line!] = buildTaskLine({
-                                    checked: parsed?.checked ?? false,
-                                    title: action.thingsTask!.title,
-                                    uuid: action.uuid!,
-                                    tag: this.settings.syncTag,
-                                });
+                            // Verify line contains expected UUID before modifying
+                            if (action.uuid && !lines[action.line!]?.includes(action.uuid)) {
+                                return content; // return unchanged
                             }
+                            const parsed = parseLine(lines[action.line!]!, this.settings.syncTag);
+                            lines[action.line!] = buildTaskLine({
+                                checked: parsed?.checked ?? false,
+                                title: action.thingsTask!.title,
+                                uuid: action.uuid!,
+                                tag: this.settings.syncTag,
+                            });
                             return lines.join("\n");
                         });
                     }
@@ -291,6 +332,7 @@ export default class ThingsSyncPlugin extends Plugin {
         const oldStartDate = cached?.startDate ?? null;
         const oldDeadline = cached?.deadline ?? null;
 
+        // Push all changes to Things first; only update cache if all succeed
         // Push title via AppleScript (silent, no auth needed)
         if (changes.title !== oldTitle) {
             await updateTaskTitle(uuid, changes.title);
@@ -319,7 +361,7 @@ export default class ThingsSyncPlugin extends Plugin {
             );
         }
 
-        // Update local cache optimistically
+        // All writes succeeded — now update local cache
         if (cached) {
             cached.title = changes.title;
             cached.notes = changes.notes;
@@ -330,11 +372,22 @@ export default class ThingsSyncPlugin extends Plugin {
 
         new Notice("Task updated in Things");
 
-        // Refresh display immediately with optimistic data
+        // Refresh display immediately with updated data
         this.dispatchCacheToEditors();
 
         // Then sync to confirm changes landed
         await this.runSync();
+    }
+
+    private resetSyncInterval() {
+        if (this.syncIntervalId !== null) {
+            window.clearInterval(this.syncIntervalId);
+        }
+        this.syncIntervalId = window.setInterval(
+            () => this.runSync(),
+            this.settings.syncIntervalSeconds * 1000
+        );
+        this.registerInterval(this.syncIntervalId);
     }
 
     private renderCodeBlock(source: string, el: HTMLElement) {
@@ -380,10 +433,14 @@ export default class ThingsSyncPlugin extends Plugin {
         const cacheState = buildCacheState(this.taskCache, this.settings);
         this.taskCacheMap = cacheState.tasks;
         this.app.workspace.iterateAllLeaves((leaf: WorkspaceLeaf) => {
-            // @ts-expect-error -- MarkdownView exposes .editor?.cm
-            const cm = leaf.view?.editor?.cm as import("@codemirror/view").EditorView | undefined;
-            if (cm) {
-                cm.dispatch({ effects: updateTaskCache.of(cacheState) });
+            try {
+                // @ts-expect-error -- MarkdownView exposes .editor?.cm
+                const cm = leaf.view?.editor?.cm as import("@codemirror/view").EditorView | undefined;
+                if (cm) {
+                    cm.dispatch({ effects: updateTaskCache.of(cacheState) });
+                }
+            } catch {
+                // Ignore leaves where CM access fails
             }
         });
         this.refreshCodeBlocks();
@@ -405,6 +462,7 @@ export default class ThingsSyncPlugin extends Plugin {
 
     async saveSettings() {
         await this.persistState();
+        this.resetSyncInterval();
         this.dispatchCacheToEditors();
     }
 

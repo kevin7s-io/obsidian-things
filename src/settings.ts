@@ -1,6 +1,5 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type ThingsSyncPlugin from "./main";
-import { ThingsSyncSettings } from "./types";
 
 export class ThingsSyncSettingTab extends PluginSettingTab {
     plugin: ThingsSyncPlugin;
@@ -184,16 +183,16 @@ export class ThingsSyncSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName("Things auth token")
-            .setDesc("Required for editing dates. Found in Things → Settings → General → Enable Things URLs")
-            .addText((text) =>
-                text
-                    .setPlaceholder("Paste auth token here")
+            .setDesc("Required for editing dates. Found in Things → Settings → General → Enable Things URLs. Stored in your vault's data.json. Exclude from version control.")
+            .addText((text) => {
+                text.inputEl.type = "password";
+                text.setPlaceholder("Paste auth token here")
                     .setValue(this.plugin.settings.thingsAuthToken)
                     .onChange(async (value) => {
                         this.plugin.settings.thingsAuthToken = value.trim();
                         await this.plugin.saveSettings();
-                    })
-            );
+                    });
+            });
 
         // Advanced
         containerEl.createEl("h3", { text: "Advanced" });
