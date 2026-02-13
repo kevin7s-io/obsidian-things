@@ -1,47 +1,72 @@
 # Things Sync for Obsidian
 
-Bidirectional sync between [Obsidian](https://obsidian.md) and [Things 3](https://culturedcode.com/things/) on macOS.
+Keep your Obsidian notes and Things 3 tasks in sync — automatically, bidirectionally, without leaving your vault.
 
-## What it does
+## Why
 
-- **Obsidian to Things:** Tag a checkbox with `#things` and the plugin creates a matching task in Things 3. A hidden HTML comment (`<!-- things:UUID -->`) links the two.
-- **Things to Obsidian:** Completing, reopening, or renaming tasks in Things syncs back to tagged checkboxes in your vault.
-- **Query views:** Embed live task lists from Things using fenced `things` code blocks. Filter by project, area, tag, status, and more. Renders as a list or kanban board.
-- **Card & inline display:** Synced tasks render as rich cards (with notes, tags, dates, project) or inline badges. Editable directly from Obsidian via the edit button.
+If you use both Obsidian and Things 3, you've probably wished they could talk to each other. Maybe you jot down tasks in a meeting note but still manage your day in Things, or you complete a task in Things and want your note to reflect that. Things Sync bridges the gap so you can capture tasks wherever it's convenient and trust that both apps stay up to date.
+
+## Features
+
+- **Two-way sync** — Create a task in Obsidian and it appears in Things. Complete it in Things and it checks off in Obsidian.
+- **Simple tagging** — Just add `#things` to any checkbox to sync it. That's it.
+- **Live query blocks** — Embed dynamic task lists from Things right in your notes. Filter by project, area, tag, status, and more.
+- **Kanban view** — Display query results as a kanban board grouped by project, area, or tag.
+- **Rich task cards** — Synced tasks show project, tags, dates, and notes at a glance. Switch between card and inline badge styles.
+- **Edit from Obsidian** — Click the edit button on any task card to update its title, notes, tags, or dates without switching apps.
 
 ## Requirements
 
-- macOS desktop
-- Things 3 installed and running
-- Obsidian 1.0+
+- macOS (desktop only)
+- [Things 3](https://culturedcode.com/things/) installed
+- [Obsidian](https://obsidian.md) 1.0 or later
 
 ## Installation
 
-1. Clone or download this repo into your vault's `.obsidian/plugins/obsidian-things/` directory.
-2. Run `npm install && npm run build`.
-3. Copy `main.js`, `manifest.json`, and `styles.css` into the plugin folder.
-4. Enable **Things Sync** in Obsidian's Community Plugins settings.
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](../../releases/latest).
+2. In your vault, create the folder `.obsidian/plugins/obsidian-things/` if it doesn't exist.
+3. Copy the three downloaded files into that folder.
+4. Open Obsidian, go to **Settings → Community Plugins**, and enable **Things Sync**.
 
-## Syncing tasks
+## Setup & permissions
 
-Add `#things` to any checkbox:
+On first launch the plugin will try to open Things 3 in the background. You may see a macOS prompt asking Obsidian to control Things — allow this so the plugin can read and create tasks.
+
+To edit task dates from Obsidian, you'll also need a **Things auth token**:
+
+1. Open Things 3 → **Settings → General → Enable Things URLs**.
+2. Copy the auth token shown there.
+3. In Obsidian, go to **Settings → Things Sync** and paste it into the **Things auth token** field.
+
+Everything else works without the token. The plugin only communicates locally between Obsidian and Things on your Mac — nothing is sent to the internet.
+
+## Usage
+
+### Creating tasks
+
+Add `#things` to any checkbox in your notes:
 
 ```markdown
 - [ ] Buy groceries #things
-- [ ] #things Call dentist
+- [ ] Call the dentist #things
 ```
 
-On the next sync cycle the plugin creates the task in Things and appends a hidden UUID:
+On the next sync cycle the plugin creates matching tasks in Things and links them with a hidden identifier. In live preview the identifier is invisible — you'll just see a clickable Things logo that opens the task in Things 3.
 
-```markdown
-- [ ] Buy groceries #things <!-- things:ABC123 -->
-```
+### How sync works
 
-In live preview and reading view the UUID is hidden. A clickable Things logo opens the task in Things 3. Metadata badges show tags, scheduled date, deadline, project, and area.
+The plugin checks for changes every 30 seconds (configurable). When it finds updates on either side it reconciles them:
 
-## Query DSL
+- **Task completed in Things** → checkbox gets checked in Obsidian
+- **Task reopened in Things** → checkbox gets unchecked
+- **Title changed in Things** → Obsidian text updates to match
+- **New `#things` checkbox in Obsidian** → task created in Things
 
-Use a fenced `things` code block to query and display tasks:
+If both sides changed, the conflict resolution setting decides which wins (Things by default).
+
+### Query blocks
+
+Embed a live view of your Things tasks using a fenced `things` code block:
 
 ````markdown
 ```things
@@ -49,42 +74,48 @@ today
 ```
 ````
 
-### List filters
+This renders an updating list of your Today tasks right in the note.
 
-Single keywords that match Things' built-in lists:
+#### List filters
 
-| Filter | Description |
+Use a single keyword to pull from a built-in Things list:
+
+| Keyword | Shows |
 |---|---|
-| `today` | Tasks in the Today list |
-| `inbox` | Tasks in the Inbox |
-| `upcoming` | Open tasks with a scheduled date |
-| `someday` | Tasks in the Someday list |
+| `today` | Today list |
+| `inbox` | Inbox |
+| `upcoming` | Tasks with a future start date |
+| `someday` | Someday list |
 | `logbook` | Completed tasks |
 
-### Property filters
+#### Property filters
 
-`key: value` pairs that narrow results:
+Narrow results with `key: value` lines:
 
-| Key | Example | Description |
-|---|---|---|
-| `project` | `project: Work` | Exact match on project name |
-| `area` | `area: Personal` | Exact match on area name |
-| `tag` | `tag: urgent` | Tasks containing this tag |
-| `status` | `status: open` | `open`, `completed`, or `canceled` |
-| `deadline` | `deadline: 2026-03-01` | Filter by deadline date |
+```
+project: Work
+area: Personal
+tag: urgent
+status: open
+deadline: 2026-03-01
+```
 
-### Sorting, grouping, limits
+`status` accepts `open`, `completed`, or `canceled`.
 
-| Key | Values | Description |
-|---|---|---|
-| `sort` | `deadline`, `title`, `project`, `area` | Sort order |
-| `group` | `project`, `area`, `tag` | Group tasks under headers |
-| `limit` | any number | Max tasks to show |
-| `view` | `list`, `kanban` | Display mode |
+#### Sorting, grouping, and limits
 
-### Examples
+```
+sort: deadline
+group: project
+limit: 10
+view: kanban
+```
 
-Show today's tasks:
+`sort` accepts `deadline`, `title`, `project`, or `area`. `group` accepts `project`, `area`, or `tag`. `view` accepts `list` (default) or `kanban`.
+
+#### Examples
+
+Today's tasks:
 
 ````markdown
 ```things
@@ -92,7 +123,7 @@ today
 ```
 ````
 
-Open tasks in a project, sorted by deadline:
+Open work tasks sorted by deadline:
 
 ````markdown
 ```things
@@ -103,7 +134,7 @@ limit: 10
 ```
 ````
 
-Kanban board grouped by project:
+Personal tasks as a kanban board:
 
 ````markdown
 ```things
@@ -113,48 +144,31 @@ view: kanban
 ```
 ````
 
-## Editing tasks
+### Editing tasks
 
-Click the pencil icon on any card to edit:
-
-- Title
-- Notes
-- Tags
-- Scheduled date
-- Deadline
-
-Changes push to Things immediately. Dates require a Things auth token (set in plugin settings).
+Click the pencil icon on any task card to edit its title, notes, tags, scheduled date, or deadline. Changes push to Things immediately.
 
 ## Settings
 
-| Setting | Default | Description |
+| Setting | Default | What it does |
 |---|---|---|
-| Sync interval | 30s | How often to sync (seconds) |
-| Sync on startup | On | Run sync when Obsidian launches |
-| Launch Things on startup | On | Start Things in background |
-| Sync tag | `#things` | Tag that marks checkboxes for sync |
-| Display mode | Inline | `inline` (badges) or `card` (Things-style cards) |
-| Show project | On | Display project name |
-| Show deadline | On | Display deadline |
-| Show area | Off | Display area name |
-| Show start date | Off | Display scheduled date |
-| Show tags | On | Display tag badges |
-| Conflict resolution | Things wins | Which side wins on conflict |
-| Auto-create in Things | On | Push new tagged checkboxes to Things |
-| Default project | Inbox | Where new tasks land |
-| Things auth token | (empty) | Required for editing dates via URL scheme |
-| Debug logging | Off | Log sync details to console |
-| Dry run mode | Off | Preview actions without writing |
-
-## Development
-
-```bash
-npm install
-npm run build        # Type-check + bundle
-npm run dev          # Watch mode
-npm test             # Run tests (vitest)
-```
+| Sync interval | 30 s | How often the plugin checks for changes |
+| Sync on startup | On | Run a sync when Obsidian launches |
+| Launch Things on startup | On | Start Things in the background if it isn't running |
+| Sync tag | `#things` | The tag that marks checkboxes for sync |
+| Display mode | Inline | Show synced tasks as `inline` badges or `card` style |
+| Show project | On | Display the project name on tasks |
+| Show deadline | On | Display the deadline on tasks |
+| Show area | Off | Display the area name on tasks |
+| Show start date | Off | Display the scheduled date on tasks |
+| Show tags | On | Display tag badges on tasks |
+| Conflict resolution | Things wins | Which side wins when both changed |
+| Auto-create in Things | On | Automatically push new tagged checkboxes to Things |
+| Default project | Inbox | Where new tasks land in Things |
+| Things auth token | — | Required for editing dates (see Setup above) |
+| Debug logging | Off | Log sync details to the developer console |
+| Dry run mode | Off | Preview what the plugin would do without making changes |
 
 ## License
 
-MIT
+[MIT](LICENSE)
