@@ -2,7 +2,7 @@ import { Notice, Platform, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import { ThingsSyncSettings, DEFAULT_SETTINGS, ThingsTask, ThingsStatus, ThingsItemType, ThingsStart, SyncState, ScannedTask } from "./types";
 import { readAllTasks, ThingsNotRunningError } from "./things-reader";
 import { createTask, completeTask, reopenTask, deleteTask, updateTaskTitle, updateTaskNotes, updateTaskTags, updateTaskDates, launchThingsInBackground } from "./things-writer";
-import { parseLine, buildTaskLine, scanFileContent } from "./markdown-scanner";
+import { parseLine, buildTaskLine, buildPlainTaskLine, scanFileContent } from "./markdown-scanner";
 import { parseQuery, filterTasks } from "./query-parser";
 import { renderListView, renderKanbanView, TaskActionHandler } from "./renderer";
 import { reconcile, ReconcileAction } from "./sync-engine";
@@ -176,6 +176,12 @@ export default class ThingsSyncPlugin extends Plugin {
                         if (!action.uuid) break;
                         const scanned = scannedTasks.find(s => s.uuid === action.uuid);
                         if (scanned) scanned.checked = false;
+                        break;
+                    }
+                    case "unlink-from-obsidian": {
+                        if (!action.uuid) break;
+                        const scanned = scannedTasks.find(s => s.uuid === action.uuid);
+                        if (scanned) scanned.uuid = null;
                         break;
                     }
                     case "create-in-things": {
@@ -354,6 +360,30 @@ export default class ThingsSyncPlugin extends Plugin {
                         });
                     }
                 }
+                break;
+            }
+
+            case "unlink-from-obsidian": {
+                this.log(`Unlinking deleted Things task from Obsidian: ${action.uuid}`);
+                if (action.filePath !== undefined && action.line !== undefined && action.scannedTask) {
+                    const file = this.app.vault.getAbstractFileByPath(action.filePath);
+                    if (file instanceof TFile) {
+                        await this.app.vault.process(file, (content: string) => {
+                            const lines = content.split("\n");
+                            if (action.uuid && !lines[action.line!]?.includes(action.uuid)) {
+                                return content;
+                            }
+                            lines[action.line!] = buildPlainTaskLine({
+                                checked: action.scannedTask!.checked,
+                                title: action.scannedTask!.title,
+                                indent: action.scannedTask!.indent,
+                            });
+                            return lines.join("\n");
+                        });
+                    }
+                }
+                delete this.syncState.tasks[action.uuid!];
+                this.taskCache = this.taskCache.filter((t) => t.uuid !== action.uuid);
                 break;
             }
         }

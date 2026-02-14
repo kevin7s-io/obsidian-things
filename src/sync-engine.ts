@@ -6,7 +6,8 @@ export type ReconcileActionType =
     | "reopen-in-things"
     | "complete-in-obsidian"
     | "reopen-in-obsidian"
-    | "update-in-obsidian";
+    | "update-in-obsidian"
+    | "unlink-from-obsidian";
 
 export interface ReconcileAction {
     type: ReconcileActionType;
@@ -51,6 +52,15 @@ export function reconcile(
         }
 
         if (!thingsTask) {
+            if (tracked) {
+                actions.push({
+                    type: "unlink-from-obsidian",
+                    uuid: scanned.uuid,
+                    filePath: scanned.filePath,
+                    line: scanned.line,
+                    scannedTask: scanned,
+                });
+            }
             continue;
         }
 

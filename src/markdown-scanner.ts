@@ -51,6 +51,12 @@ export function buildTaskLine(opts: BuildTaskLineOpts): string {
     return `${prefix}- ${checkbox} ${opts.title} ${opts.tag} <!-- things:${opts.uuid} -->`;
 }
 
+export function buildPlainTaskLine(opts: { checked: boolean; title: string; indent?: string }): string {
+    const checkbox = opts.checked ? "[x]" : "[ ]";
+    const prefix = opts.indent || "";
+    return `${prefix}- ${checkbox} ${opts.title}`;
+}
+
 export function scanFileContent(
     content: string,
     filePath: string,

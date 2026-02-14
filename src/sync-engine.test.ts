@@ -111,6 +111,23 @@ describe("reconcile", () => {
         expect(hasComplete).toBe(false);
     });
 
+    it("emits unlink action when tracked task deleted from Things", () => {
+        const scanned = [makeScanned()];
+        const tracked: Record<string, TrackedTask> = {
+            "UUID-1": makeTracked(),
+        };
+        const actions = reconcile(scanned, [], tracked, "things");
+        expect(actions).toHaveLength(1);
+        expect(actions[0]!.type).toBe("unlink-from-obsidian");
+        expect(actions[0]!.uuid).toBe("UUID-1");
+    });
+
+    it("skips untracked task missing from Things", () => {
+        const scanned = [makeScanned()];
+        const actions = reconcile(scanned, [], {}, "things");
+        expect(actions).toHaveLength(0);
+    });
+
     it("obsidian wins on conflict when configured", () => {
         const scanned = [makeScanned({ checked: true })];
         const tracked: Record<string, TrackedTask> = {

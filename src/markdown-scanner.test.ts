@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseLine, buildTaskLine, scanFileContent } from "./markdown-scanner";
+import { parseLine, buildTaskLine, buildPlainTaskLine, scanFileContent } from "./markdown-scanner";
 
 describe("parseLine", () => {
     const tag = "#things";
@@ -147,6 +147,23 @@ describe("buildTaskLine", () => {
             indent: "    ",
         });
         expect(line).toBe("    - [ ] Subtask #things <!-- things:IND-001 -->");
+    });
+});
+
+describe("buildPlainTaskLine", () => {
+    it("builds an unchecked plain task line", () => {
+        const line = buildPlainTaskLine({ checked: false, title: "Buy groceries" });
+        expect(line).toBe("- [ ] Buy groceries");
+    });
+
+    it("builds a checked plain task line", () => {
+        const line = buildPlainTaskLine({ checked: true, title: "Done task" });
+        expect(line).toBe("- [x] Done task");
+    });
+
+    it("builds an indented plain task line", () => {
+        const line = buildPlainTaskLine({ checked: false, title: "Subtask", indent: "    " });
+        expect(line).toBe("    - [ ] Subtask");
     });
 });
 
