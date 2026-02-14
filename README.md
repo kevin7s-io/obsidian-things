@@ -23,10 +23,21 @@ If you use both Obsidian and Things 3, you've probably wished they could talk to
 
 ## Installation
 
-1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](../../releases/latest).
-2. In your vault, create the folder `.obsidian/plugins/obsidian-things/` if it doesn't exist.
-3. Copy the three downloaded files into that folder.
-4. Open Obsidian, go to **Settings → Community Plugins**, and enable **Things Sync**.
+### With BRAT (recommended)
+
+1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) community plugin if you don't have it.
+2. Open **Settings → BRAT → Add Beta Plugin**.
+3. Enter `kevin7s-io/obsidian-things` and click **Add Plugin**.
+4. Enable **Things Sync** in **Settings → Community Plugins**.
+
+BRAT will keep the plugin updated automatically.
+
+### Manual
+
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/kevin7s-io/obsidian-things/releases/latest).
+2. Create `.obsidian/plugins/obsidian-things/` in your vault if it doesn't exist.
+3. Copy the three files into that folder.
+4. Enable **Things Sync** in **Settings → Community Plugins**.
 
 ## Setup & permissions
 
