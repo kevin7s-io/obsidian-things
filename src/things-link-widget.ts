@@ -428,10 +428,40 @@ class ThingsCardWidget extends WidgetType {
 
     toDOM(view: EditorView): HTMLElement {
         if (!this.task) {
-            const placeholder = document.createElement("div");
-            placeholder.className = "things-card";
-            placeholder.textContent = "Loading\u2026";
-            return placeholder;
+            const skeleton = document.createElement("div");
+            skeleton.className = "things-card things-card-skeleton";
+
+            const main = document.createElement("div");
+            main.className = "things-card-main";
+
+            const fakeCheckbox = document.createElement("div");
+            fakeCheckbox.className = "things-card-checkbox things-skeleton-bar";
+            fakeCheckbox.style.width = "15px";
+            fakeCheckbox.style.height = "15px";
+            fakeCheckbox.style.borderRadius = "3.5px";
+            main.appendChild(fakeCheckbox);
+
+            const content = document.createElement("div");
+            content.className = "things-card-content";
+
+            const titleBar = document.createElement("div");
+            titleBar.className = "things-skeleton-bar";
+            titleBar.style.width = "60%";
+            titleBar.style.height = "14px";
+            titleBar.style.borderRadius = "4px";
+            content.appendChild(titleBar);
+
+            const subtitleBar = document.createElement("div");
+            subtitleBar.className = "things-skeleton-bar";
+            subtitleBar.style.width = "40%";
+            subtitleBar.style.height = "10px";
+            subtitleBar.style.borderRadius = "4px";
+            subtitleBar.style.marginTop = "8px";
+            content.appendChild(subtitleBar);
+
+            main.appendChild(content);
+            skeleton.appendChild(main);
+            return skeleton;
         }
 
         const isChecked = /- \[x\] /i.test(this.lineText);
@@ -506,7 +536,7 @@ export const thingsLinkViewPlugin = ViewPlugin.fromClass(
 
             // Second pass: build task decorations in document order
             for (let i = 1; i <= view.state.doc.lines; i++) {
-                if (!uuidLines.has(i) || i === cursorLine) continue;
+                if (!uuidLines.has(i)) continue;
                 const line = view.state.doc.line(i);
 
                 uuidRegex.lastIndex = 0;
@@ -515,6 +545,16 @@ export const thingsLinkViewPlugin = ViewPlugin.fromClass(
 
                 const uuid = uuidMatch[1]!.replace(/^to do id /, "");
                 const task = cacheState.tasks.get(uuid);
+
+                // Cursor line: hide only the HTML comment, leave everything else editable
+                if (i === cursorLine) {
+                    builder.add(
+                        line.from + uuidMatch.index,
+                        line.from + uuidMatch.index + uuidMatch[0].length,
+                        Decoration.replace({})
+                    );
+                    continue;
+                }
 
                 if (cacheState.displayMode === "card") {
                     builder.add(

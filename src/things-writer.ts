@@ -102,6 +102,18 @@ export async function updateTaskTags(uuid: string, tags: string[]): Promise<void
     }
 }
 
+export function buildDeleteScript(uuid: string): string {
+    validateUuid(uuid);
+    return `tell application "Things3" to move to do id "${uuid}" to list "Trash"`;
+}
+
+export async function deleteTask(uuid: string): Promise<void> {
+    const result = await runAppleScript(buildDeleteScript(uuid));
+    if (result.stderr) {
+        throw new Error(`AppleScript error: ${result.stderr}`);
+    }
+}
+
 export async function updateTaskNotes(uuid: string, notes: string): Promise<void> {
     const result = await runAppleScript(buildUpdateNotesScript(uuid, notes));
     if (result.stderr) {

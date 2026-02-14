@@ -20,7 +20,8 @@ export class TaskEditModal extends Modal {
     constructor(
         app: App,
         private task: ThingsTask,
-        private onSave: (uuid: string, changes: TaskMetadataChanges) => Promise<void>
+        private onSave: (uuid: string, changes: TaskMetadataChanges) => Promise<void>,
+        private onDelete?: (uuid: string) => Promise<void>
     ) {
         super(app);
         this.title = task.title;
@@ -70,7 +71,7 @@ export class TaskEditModal extends Modal {
 
         // Tags
         new Setting(contentEl)
-            .setName("Tags (comma separated)")
+            .setName("Tags")
             .addText((text) => {
                 text.setValue(this.tags)
                     .setPlaceholder("tag1, tag2")
@@ -121,10 +122,37 @@ export class TaskEditModal extends Modal {
         // Buttons
         const buttonRow = contentEl.createDiv({ cls: "things-edit-buttons" });
 
-        const cancelBtn = buttonRow.createEl("button", { text: "Cancel" });
+        // Delete button — left side, visually separated
+        if (this.onDelete) {
+            const deleteBtn = buttonRow.createEl("button", {
+                text: "Delete",
+                cls: "things-edit-delete",
+            });
+            deleteBtn.addEventListener("click", async () => {
+                deleteBtn.disabled = true;
+                deleteBtn.textContent = "Deleting\u2026";
+                try {
+                    await this.onDelete!(this.task.uuid);
+                    this.close();
+                } catch (err) {
+                    deleteBtn.disabled = false;
+                    deleteBtn.textContent = "Delete";
+                    const errEl = contentEl.querySelector(".things-edit-error");
+                    if (errEl) errEl.remove();
+                    contentEl.createEl("div", {
+                        text: `Error: ${err}`,
+                        cls: "things-edit-error",
+                    });
+                }
+            });
+        }
+
+        const rightButtons = buttonRow.createDiv({ cls: "things-edit-buttons-right" });
+
+        const cancelBtn = rightButtons.createEl("button", { text: "Cancel" });
         cancelBtn.addEventListener("click", () => this.close());
 
-        const saveBtn = buttonRow.createEl("button", {
+        const saveBtn = rightButtons.createEl("button", {
             text: "Save",
             cls: "mod-cta",
         });

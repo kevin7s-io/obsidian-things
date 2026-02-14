@@ -1,7 +1,7 @@
 import { Notice, Platform, Plugin, TFile, WorkspaceLeaf } from "obsidian";
-import { ThingsSyncSettings, DEFAULT_SETTINGS, ThingsTask, ThingsStatus, SyncState, ScannedTask } from "./types";
+import { ThingsSyncSettings, DEFAULT_SETTINGS, ThingsTask, ThingsStatus, ThingsItemType, ThingsStart, SyncState, ScannedTask } from "./types";
 import { readAllTasks, ThingsNotRunningError } from "./things-reader";
-import { createTask, completeTask, reopenTask, updateTaskTitle, updateTaskNotes, updateTaskTags, updateTaskDates, launchThingsInBackground } from "./things-writer";
+import { createTask, completeTask, reopenTask, deleteTask, updateTaskTitle, updateTaskNotes, updateTaskTags, updateTaskDates, launchThingsInBackground } from "./things-writer";
 import { parseLine, buildTaskLine, scanFileContent } from "./markdown-scanner";
 import { parseQuery, filterTasks } from "./query-parser";
 import { renderListView, renderKanbanView, TaskActionHandler } from "./renderer";
@@ -18,6 +18,7 @@ export default class ThingsSyncPlugin extends Plugin {
     syncState: SyncState = { lastSyncTimestamp: 0, tasks: {} };
     syncing = false;
     private syncIntervalId: number | null = null;
+    private tagSyncDebounceId: number | null = null;
     private codeBlocks: Array<{ el: HTMLElement; source: string }> = [];
 
     async onload() {
@@ -47,8 +48,11 @@ export default class ThingsSyncPlugin extends Plugin {
 
         // Edit handler — opens modal, pushes changes to Things
         const openEditModal = (uuid: string, task: ThingsTask) => {
-            new TaskEditModal(this.app, task, (u, changes) =>
-                this.updateTaskMetadata(u, changes)
+            new TaskEditModal(
+                this.app,
+                task,
+                (u, changes) => this.updateTaskMetadata(u, changes),
+                (u) => this.deleteTaskAndCleanup(u)
             ).open();
         };
 
@@ -70,6 +74,15 @@ export default class ThingsSyncPlugin extends Plugin {
         this.registerEvent(
             this.app.workspace.on("active-leaf-change", () => {
                 this.dispatchCacheToEditors();
+            })
+        );
+
+        // Trigger sync when an unlinked #things tag is detected
+        this.registerEvent(
+            this.app.vault.on("modify", (file) => {
+                if (file instanceof TFile && file.extension === "md") {
+                    this.checkForUnlinkedTags(file);
+                }
             })
         );
 
@@ -254,6 +267,29 @@ export default class ThingsSyncPlugin extends Plugin {
                         title: action.scannedTask!.title,
                         lastSyncTimestamp: Date.now() / 1000,
                     };
+
+                    // Push synthetic task so card renders immediately
+                    this.taskCache.push({
+                        uuid,
+                        title: action.title!,
+                        status: ThingsStatus.Open,
+                        type: ThingsItemType.Todo,
+                        notes: "",
+                        project: null,
+                        projectTitle: null,
+                        area: null,
+                        areaTitle: null,
+                        tags: [],
+                        startDate: null,
+                        deadline: null,
+                        stopDate: null,
+                        creationDate: Date.now() / 1000,
+                        userModificationDate: Date.now() / 1000,
+                        start: ThingsStart.Inbox,
+                        inTodayList: false,
+                        trashed: false,
+                    });
+                    this.dispatchCacheToEditors();
                 }
                 break;
             }
@@ -379,6 +415,34 @@ export default class ThingsSyncPlugin extends Plugin {
         await this.runSync();
     }
 
+    async deleteTaskAndCleanup(uuid: string) {
+        this.log(`Deleting task ${uuid}`);
+        await deleteTask(uuid);
+
+        // Remove from local cache
+        this.taskCache = this.taskCache.filter((t) => t.uuid !== uuid);
+        delete this.syncState.tasks[uuid];
+
+        // Remove the line from the vault file
+        const tracked = Object.values(this.syncState.tasks).find((t) => t.uuid === uuid);
+        // We already deleted from syncState, so search all markdown files
+        const files = this.app.vault.getMarkdownFiles();
+        for (const file of files) {
+            const content = await this.app.vault.cachedRead(file);
+            if (!content.includes(`<!-- things:${uuid} -->`)) continue;
+            await this.app.vault.process(file, (c: string) => {
+                const lines = c.split("\n");
+                const filtered = lines.filter((l) => !l.includes(`<!-- things:${uuid} -->`));
+                return filtered.join("\n");
+            });
+            break;
+        }
+
+        await this.persistState();
+        this.dispatchCacheToEditors();
+        new Notice("Task deleted from Things");
+    }
+
     private resetSyncInterval() {
         if (this.syncIntervalId !== null) {
             window.clearInterval(this.syncIntervalId);
@@ -444,6 +508,24 @@ export default class ThingsSyncPlugin extends Plugin {
             }
         });
         this.refreshCodeBlocks();
+    }
+
+    private async checkForUnlinkedTags(file: TFile) {
+        const content = await this.app.vault.cachedRead(file);
+        const escapedTag = this.settings.syncTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const pattern = new RegExp(
+            `^- \\[[ x]\\] .+${escapedTag}(?:\\s|$)(?!.*<!--\\s*things:)`,
+            "m"
+        );
+        if (!pattern.test(content)) return;
+
+        if (this.tagSyncDebounceId !== null) {
+            window.clearTimeout(this.tagSyncDebounceId);
+        }
+        this.tagSyncDebounceId = window.setTimeout(() => {
+            this.tagSyncDebounceId = null;
+            this.runSync();
+        }, 1500);
     }
 
     log(message: string) {

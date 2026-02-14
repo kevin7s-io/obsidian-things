@@ -169,7 +169,7 @@ a.things-badge-tag:hover {
     border: 1px solid var(--background-modifier-border);
     border-radius: 10px;
     padding: 12px 14px;
-    margin: 4px 0;
+    margin: 0;
     max-width: 512px;
     text-indent: 0;
     transition: border-color 0.15s;
@@ -312,9 +312,23 @@ a.things-badge-tag:hover {
     opacity: 1;
 }
 
+/* --- Skeleton loading indicator --- */
+.things-card-skeleton {
+    pointer-events: none;
+}
+.things-skeleton-bar {
+    background: var(--background-modifier-border);
+    animation: things-skeleton-pulse 1.2s ease-in-out infinite;
+}
+@keyframes things-skeleton-pulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 0.7; }
+}
+
 /* --- Task Edit Modal --- */
 .things-edit-modal {
     padding: 0;
+    padding-top: 12px;
 }
 .things-edit-title {
     width: 100%;
@@ -358,11 +372,28 @@ a.things-badge-tag:hover {
 }
 .things-edit-buttons {
     display: flex;
-    justify-content: flex-end;
-    gap: 8px;
+    justify-content: space-between;
+    align-items: center;
     margin-top: 16px;
     padding-top: 12px;
     border-top: 1px solid var(--background-modifier-border);
+}
+.things-edit-buttons-right {
+    display: flex;
+    gap: 8px;
+}
+.things-edit-delete {
+    background: transparent;
+    color: var(--text-error);
+    border: none;
+    box-shadow: none;
+    opacity: 0.8;
+    transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.things-edit-delete:hover {
+    background: var(--text-error);
+    color: var(--text-on-accent);
+    opacity: 1;
 }
 .things-edit-error {
     color: var(--text-error);
