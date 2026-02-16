@@ -131,8 +131,16 @@ export default class ThingsSyncPlugin extends Plugin {
             this.log("Starting sync...");
 
             // Step 1: Read from Things via JXA
-            this.taskCache = await readAllTasks();
-            this.log(`Read ${this.taskCache.length} tasks from Things`);
+            const freshTasks = await readAllTasks();
+            this.log(`Read ${freshTasks.length} tasks from Things`);
+
+            // Retain cached data for tracked tasks that readAllTasks didn't return
+            // (e.g., completed tasks moved to Things' Logbook are no longer in app.toDos)
+            const freshUuids = new Set(freshTasks.map(t => t.uuid));
+            const retained = this.taskCache.filter(
+                t => !freshUuids.has(t.uuid) && this.syncState.tasks[t.uuid]
+            );
+            this.taskCache = [...freshTasks, ...retained];
 
             // Step 2: Scan vault
             const scannedTasks: ScannedTask[] = [];

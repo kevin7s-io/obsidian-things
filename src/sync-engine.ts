@@ -52,7 +52,9 @@ export function reconcile(
         }
 
         if (!thingsTask) {
-            if (tracked) {
+            // Only unlink open (unchecked) tasks. Checked tasks missing from
+            // readAllTasks are completed in Things' Logbook, not deleted.
+            if (tracked && !scanned.checked) {
                 actions.push({
                     type: "unlink-from-obsidian",
                     uuid: scanned.uuid,

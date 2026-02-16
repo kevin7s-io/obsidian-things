@@ -122,6 +122,15 @@ describe("reconcile", () => {
         expect(actions[0]!.uuid).toBe("UUID-1");
     });
 
+    it("does not unlink completed task missing from Things", () => {
+        const scanned = [makeScanned({ checked: true })];
+        const tracked: Record<string, TrackedTask> = {
+            "UUID-1": makeTracked({ checked: true }),
+        };
+        const actions = reconcile(scanned, [], tracked, "things");
+        expect(actions).toHaveLength(0);
+    });
+
     it("skips untracked task missing from Things", () => {
         const scanned = [makeScanned()];
         const actions = reconcile(scanned, [], {}, "things");
