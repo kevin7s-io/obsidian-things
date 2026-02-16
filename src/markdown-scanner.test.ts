@@ -167,6 +167,26 @@ describe("buildPlainTaskLine", () => {
     });
 });
 
+describe("unlink safety: plain line is not re-detected", () => {
+    const tag = "#things";
+
+    it("buildPlainTaskLine output is invisible to scanFileContent", () => {
+        const plainLine = buildPlainTaskLine({ checked: false, title: "Buy milk" });
+        const tasks = scanFileContent(plainLine, "test.md", tag);
+        expect(tasks).toHaveLength(0);
+    });
+
+    it("plain line among tagged lines is not detected", () => {
+        const content = [
+            "- [ ] Buy milk",
+            "- [ ] Call doctor #things <!-- things:UUID-1 -->",
+        ].join("\n");
+        const tasks = scanFileContent(content, "test.md", tag);
+        expect(tasks).toHaveLength(1);
+        expect(tasks[0]!.title).toBe("Call doctor");
+    });
+});
+
 describe("parseLine backward compat", () => {
     const tag = "#things";
 

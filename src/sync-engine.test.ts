@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { reconcile, ReconcileAction } from "./sync-engine";
+import { reconcile, ReconcileAction, filterPrematureUnlinks } from "./sync-engine";
 import { ThingsTask, ThingsStatus, ThingsItemType, ThingsStart, TrackedTask, ScannedTask } from "./types";
 
 const makeThingsTask = (overrides: Partial<ThingsTask> = {}): ThingsTask => ({
@@ -128,6 +128,46 @@ describe("reconcile", () => {
         expect(actions).toHaveLength(0);
     });
 
+    it("does not unlink task missing for only one sync", () => {
+        const scanned = [makeScanned()];
+        const tracked: Record<string, TrackedTask> = {
+            "UUID-1": makeTracked(),
+        };
+        const actions = reconcile(scanned, [], tracked, "things");
+        const { filtered } = filterPrematureUnlinks(actions, new Set());
+        expect(filtered).toHaveLength(0);
+    });
+
+    it("unlinks task missing for two consecutive syncs", () => {
+        const scanned = [makeScanned()];
+        const tracked: Record<string, TrackedTask> = {
+            "UUID-1": makeTracked(),
+        };
+        const actions = reconcile(scanned, [], tracked, "things");
+        const { filtered } = filterPrematureUnlinks(actions, new Set(["UUID-1"]));
+        expect(filtered).toHaveLength(1);
+        expect(filtered[0]!.type).toBe("unlink-from-obsidian");
+    });
+
+    it("cancels unlink when task reappears after one miss", () => {
+        const scanned = [makeScanned()];
+        const tracked: Record<string, TrackedTask> = {
+            "UUID-1": makeTracked(),
+        };
+
+        // Sync 1: task missing — deferred
+        const actions1 = reconcile(scanned, [], tracked, "things");
+        const { currentlyMissing } = filterPrematureUnlinks(actions1, new Set());
+
+        // Sync 2: task reappears
+        const things = [makeThingsTask()];
+        const actions2 = reconcile(scanned, things, tracked, "things");
+        const { filtered, currentlyMissing: missing2 } = filterPrematureUnlinks(actions2, currentlyMissing);
+
+        expect(filtered).toHaveLength(0);
+        expect(missing2.size).toBe(0);
+    });
+
     it("obsidian wins on conflict when configured", () => {
         const scanned = [makeScanned({ checked: true })];
         const tracked: Record<string, TrackedTask> = {
@@ -139,5 +179,55 @@ describe("reconcile", () => {
         const hasReopen = actions.some((a) => a.type === "reopen-in-obsidian");
         expect(hasComplete).toBe(true);
         expect(hasReopen).toBe(false);
+    });
+});
+
+describe("filterPrematureUnlinks", () => {
+    it("passes non-unlink actions through unchanged", () => {
+        const actions: ReconcileAction[] = [
+            { type: "complete-in-things", uuid: "UUID-1" },
+            { type: "create-in-things", title: "New task" },
+        ];
+        const { filtered } = filterPrematureUnlinks(actions, new Set());
+        expect(filtered).toEqual(actions);
+    });
+
+    it("blocks unlink on first miss (empty previouslyMissing)", () => {
+        const actions: ReconcileAction[] = [
+            { type: "unlink-from-obsidian", uuid: "UUID-1", filePath: "test.md", line: 0 },
+        ];
+        const { filtered, currentlyMissing } = filterPrematureUnlinks(actions, new Set());
+        expect(filtered).toHaveLength(0);
+        expect(currentlyMissing.has("UUID-1")).toBe(true);
+    });
+
+    it("passes unlink when UUID was previously missing", () => {
+        const actions: ReconcileAction[] = [
+            { type: "unlink-from-obsidian", uuid: "UUID-1", filePath: "test.md", line: 0 },
+        ];
+        const { filtered } = filterPrematureUnlinks(actions, new Set(["UUID-1"]));
+        expect(filtered).toHaveLength(1);
+        expect(filtered[0]!.type).toBe("unlink-from-obsidian");
+    });
+
+    it("tracks all currently missing UUIDs", () => {
+        const actions: ReconcileAction[] = [
+            { type: "unlink-from-obsidian", uuid: "UUID-1", filePath: "a.md", line: 0 },
+            { type: "unlink-from-obsidian", uuid: "UUID-2", filePath: "b.md", line: 0 },
+            { type: "complete-in-things", uuid: "UUID-3" },
+        ];
+        const { currentlyMissing } = filterPrematureUnlinks(actions, new Set());
+        expect(currentlyMissing).toEqual(new Set(["UUID-1", "UUID-2"]));
+    });
+
+    it("mixes deferred and confirmed unlinks correctly", () => {
+        const actions: ReconcileAction[] = [
+            { type: "unlink-from-obsidian", uuid: "UUID-1", filePath: "a.md", line: 0 },
+            { type: "unlink-from-obsidian", uuid: "UUID-2", filePath: "b.md", line: 0 },
+        ];
+        // Only UUID-1 was previously missing
+        const { filtered } = filterPrematureUnlinks(actions, new Set(["UUID-1"]));
+        expect(filtered).toHaveLength(1);
+        expect(filtered[0]!.uuid).toBe("UUID-1");
     });
 });

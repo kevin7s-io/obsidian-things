@@ -158,3 +158,23 @@ export function reconcile(
 
     return actions;
 }
+
+/**
+ * Require a task to be missing from Things for two consecutive syncs before
+ * actually unlinking it. This prevents premature unlinks caused by transient
+ * JXA/timing issues where readAllTasks temporarily omits a task.
+ */
+export function filterPrematureUnlinks(
+    actions: ReconcileAction[],
+    previouslyMissing: Set<string>
+): { filtered: ReconcileAction[]; currentlyMissing: Set<string> } {
+    const currentlyMissing = new Set<string>();
+    const filtered = actions.filter(a => {
+        if (a.type === "unlink-from-obsidian" && a.uuid) {
+            currentlyMissing.add(a.uuid);
+            return previouslyMissing.has(a.uuid);
+        }
+        return true;
+    });
+    return { filtered, currentlyMissing };
+}

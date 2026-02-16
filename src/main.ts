@@ -5,7 +5,7 @@ import { createTask, completeTask, reopenTask, deleteTask, updateTaskTitle, upda
 import { parseLine, buildTaskLine, buildPlainTaskLine, scanFileContent } from "./markdown-scanner";
 import { parseQuery, filterTasks } from "./query-parser";
 import { renderListView, renderKanbanView, TaskActionHandler } from "./renderer";
-import { reconcile, ReconcileAction } from "./sync-engine";
+import { reconcile, ReconcileAction, filterPrematureUnlinks } from "./sync-engine";
 import { ThingsSyncSettingTab } from "./settings";
 import { thingsLinkViewPlugin, createThingsPostProcessor, setEditTaskHandler } from "./things-link-widget";
 import { TaskEditModal, TaskMetadataChanges } from "./task-edit-modal";
@@ -18,6 +18,7 @@ export default class ThingsSyncPlugin extends Plugin {
     syncState: SyncState = { lastSyncTimestamp: 0, tasks: {} };
     syncing = false;
     private syncIntervalId: number | null = null;
+    private missingFromThings = new Set<string>();
     private tagSyncDebounceId: number | null = null;
     private codeBlocks: Array<{ el: HTMLElement; source: string }> = [];
 
@@ -144,13 +145,18 @@ export default class ThingsSyncPlugin extends Plugin {
             this.log(`Scanned ${scannedTasks.length} tagged tasks in vault`);
 
             // Step 3: Reconcile
-            const actions = reconcile(
+            const rawActions = reconcile(
                 scannedTasks,
                 this.taskCache,
                 this.syncState.tasks,
                 this.settings.conflictResolution
             );
-            this.log(`Reconciled: ${actions.length} actions`);
+            const { filtered: actions, currentlyMissing } = filterPrematureUnlinks(rawActions, this.missingFromThings);
+            this.missingFromThings = currentlyMissing;
+            this.log(`Reconciled: ${rawActions.length} actions`);
+            if (rawActions.length !== actions.length) {
+                this.log(`Deferred ${rawActions.length - actions.length} unlink(s) pending confirmation`);
+            }
 
             // Step 4: Apply actions
             if (!this.settings.dryRun) {
